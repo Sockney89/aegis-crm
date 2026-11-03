@@ -1,0 +1,505 @@
+extern "C" fn crm_db_open(path: Str) -> Handle[Db]
+extern "C" fn crm_db_close(db: Handle[Db]) -> Empty
+extern "C" fn crm_exec(db: Handle[Db], sql: Str) -> Int
+extern "C" fn crm_errmsg(db: Handle[Db]) -> Str
+extern "C" fn crm_prepare(db: Handle[Db], sql: Str) -> Handle[Stmt]
+extern "C" fn crm_step(stmt: Handle[Stmt]) -> Int
+extern "C" fn crm_finalize(stmt: Handle[Stmt]) -> Int
+extern "C" fn crm_column_count(stmt: Handle[Stmt]) -> Int
+extern "C" fn crm_column_text(stmt: Handle[Stmt], i: Int) -> Str
+extern "C" fn crm_column_int(stmt: Handle[Stmt], i: Int) -> Int
+extern "C" fn crm_column_double(stmt: Handle[Stmt], i: Int) -> Float
+extern "C" fn crm_bind_text(stmt: Handle[Stmt], index: Int, value: Str) -> Int
+extern "C" fn crm_bind_int(stmt: Handle[Stmt], index: Int, value: Int) -> Int
+extern "C" fn crm_bind_double(stmt: Handle[Stmt], index: Int, value: Float) -> Int
+extern "C" fn crm_reset(stmt: Handle[Stmt]) -> Empty
+
+struct App { }
+
+impl App {
+    fn cors(self, h: Http, r: Response) -> Response {
+        let r1 = h.with_header(r, "Access-Control-Allow-Origin", "*")
+        let r2 = h.with_header(r1, "Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
+        let r3 = h.with_header(r2, "Access-Control-Allow-Headers", "Content-Type,Authorization")
+        return r3
+    }
+
+    fn field_str(self, jp: JsonParser, obj: Json, key: Str) -> Str {
+        match jp.get(obj, key) {
+            some(v) => {
+                match jp.as_str(v) {
+                    some(s) => { return s }
+                    none => { return "" }
+                }
+            }
+            none => { return "" }
+        }
+        return ""
+    }
+
+    fn field_float(self, jp: JsonParser, obj: Json, key: Str) -> Float {
+        match jp.get(obj, key) {
+            some(v) => {
+                match jp.as_float(v) {
+                    some(f) => { return f }
+                    none => { return 0.0 }
+                }
+            }
+            none => { return 0.0 }
+        }
+        return 0.0
+    }
+
+    fn sql_escape(self, s: Str) -> Str {
+        return s.replace("'", "''")
+    }
+
+    fn exec(self, db: Handle[Db], sql: Str) -> Empty {
+        let rc = crm_exec(db, sql)
+        if rc != 0 {
+            println("SQL err: " + crm_errmsg(db))
+        }
+    }
+
+    fn new_id(self, prefix: Str) -> Str {
+        return prefix + "_" + str(now_ms()) + "_" + str(rand_int(1000, 9999))
+    }
+
+    fn new_token(self) -> Str {
+        return "tok_" + str(now_ms()) + "_" + str(rand_int(100000, 999999))
+    }
+
+    fn hash_password(self, p: Str) -> Str {
+        return sha256(p)
+    }
+
+    fn user_json(self, id: Str, email: Str, name: Str) -> Str {
+        let h = Http {}
+        return `{"id":"` + h.json_escape(id) + `","email":"` + h.json_escape(email) + `","name":"` + h.json_escape(name) + `"}`
+    }
+
+    fn contact_json(self, id: Str, name: Str, email: Str, phone: Str, company_id: Str, notes: Str) -> Str {
+        let h = Http {}
+        return `{"id":"` + h.json_escape(id) + `","name":"` + h.json_escape(name) + `","email":"` + h.json_escape(email) + `","phone":"` + h.json_escape(phone) + `","company_id":"` + h.json_escape(company_id) + `","notes":"` + h.json_escape(notes) + `"}`
+    }
+
+    fn company_json(self, id: Str, name: Str, industry: Str, website: Str, notes: Str) -> Str {
+        let h = Http {}
+        return `{"id":"` + h.json_escape(id) + `","name":"` + h.json_escape(name) + `","industry":"` + h.json_escape(industry) + `","website":"` + h.json_escape(website) + `","notes":"` + h.json_escape(notes) + `"}`
+    }
+
+    fn deal_json(self, id: Str, title: Str, contact_id: Str, company_id: Str, amount: Float, stage: Str, created_at: Int) -> Str {
+        let h = Http {}
+        return `{"id":"` + h.json_escape(id) + `","title":"` + h.json_escape(title) + `","contact_id":"` + h.json_escape(contact_id) + `","company_id":"` + h.json_escape(company_id) + `","amount":` + str(amount) + `,"stage":"` + h.json_escape(stage) + `","created_at":` + str(created_at) + `}`
+    }
+
+    fn main(self) -> Int {
+        let db = crm_db_open("crm.db")
+        if db == null {
+            println("failed to open db")
+            return 1
+        }
+        // schema
+        self.exec(db, "CREATE TABLE IF NOT EXISTS users (email TEXT PRIMARY KEY, id TEXT, name TEXT, password_hash TEXT, reset_token TEXT, reset_expires INTEGER)")
+        self.exec(db, "CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, email TEXT)")
+        self.exec(db, "CREATE TABLE IF NOT EXISTS contacts (id TEXT PRIMARY KEY, owner TEXT, name TEXT, email TEXT, phone TEXT, company_id TEXT, notes TEXT)")
+        self.exec(db, "CREATE TABLE IF NOT EXISTS companies (id TEXT PRIMARY KEY, owner TEXT, name TEXT, industry TEXT, website TEXT, notes TEXT)")
+        self.exec(db, "CREATE TABLE IF NOT EXISTS deals (id TEXT PRIMARY KEY, owner TEXT, contact_id TEXT, company_id TEXT, title TEXT, amount REAL, stage TEXT, created_at INTEGER)")
+
+        let handler = |req: Request| -> Response {
+            let h = Http {}
+            let jp = JsonParser {}
+            let app = App {}
+
+            if req.method == "OPTIONS" {
+                return app.cors(h, h.respond_ok(""))
+            }
+
+            // health
+            if req.path == "/health" {
+                return app.cors(h, h.respond_json(`{"ok":true}`))
+            }
+
+            // --- register ---
+            if req.path == "/auth/register" && req.method == "POST" {
+                match jp.parse(req.body) {
+                    ok(obj) => {
+                        let email = app.field_str(jp, obj, "email")
+                        let password = app.field_str(jp, obj, "password")
+                        let name = app.field_str(jp, obj, "name")
+                        if email == "" || password == "" {
+                            return app.cors(h, h.respond_400())
+                        }
+                        // check exists
+                        let stmt = crm_prepare(db, "SELECT id FROM users WHERE email='" + app.sql_escape(email) + "'")
+                        let mut exists = false
+                        if crm_step(stmt) == 100 {
+                            exists = true
+                        }
+                        crm_finalize(stmt)
+                        if exists {
+                            return app.cors(h, h.respond_json(`{"error":"email taken"}`))
+                        }
+                        let id = app.new_id("u")
+                        let ph = app.hash_password(password)
+                        app.exec(db, "INSERT INTO users (email,id,name,password_hash,reset_token,reset_expires) VALUES ('" + app.sql_escape(email) + "','" + app.sql_escape(id) + "','" + app.sql_escape(name) + "','" + app.sql_escape(ph) + "','',0)")
+                        let token = app.new_token()
+                        app.exec(db, "INSERT INTO sessions (token,email) VALUES ('" + app.sql_escape(token) + "','" + app.sql_escape(email) + "')")
+                        let body = `{"token":"` + token + `","user":` + app.user_json(id, email, name) + `}`
+                        return app.cors(h, h.respond_json(body))
+                    }
+                    err(e) => { return app.cors(h, h.respond_400()) }
+                }
+            }
+
+            // --- login ---
+            if req.path == "/auth/login" && req.method == "POST" {
+                match jp.parse(req.body) {
+                    ok(obj) => {
+                        let email = app.field_str(jp, obj, "email")
+                        let password = app.field_str(jp, obj, "password")
+                        let stmt = crm_prepare(db, "SELECT id,name,password_hash FROM users WHERE email='" + app.sql_escape(email) + "'")
+                        let rc = crm_step(stmt)
+                        if rc != 100 {
+                            crm_finalize(stmt)
+                            return app.cors(h, h.respond_json(`{"error":"invalid credentials"}`))
+                        }
+                        let uid = crm_column_text(stmt, 0)
+                        let uname = crm_column_text(stmt, 1)
+                        let phash = crm_column_text(stmt, 2)
+                        crm_finalize(stmt)
+                        if phash != app.hash_password(password) {
+                            return app.cors(h, h.respond_json(`{"error":"invalid credentials"}`))
+                        }
+                        let token = app.new_token()
+                        app.exec(db, "INSERT INTO sessions (token,email) VALUES ('" + app.sql_escape(token) + "','" + app.sql_escape(email) + "')")
+                        let body = `{"token":"` + token + `","user":` + app.user_json(uid, email, uname) + `}`
+                        return app.cors(h, h.respond_json(body))
+                    }
+                    err(e) => { return app.cors(h, h.respond_400()) }
+                }
+            }
+
+            // --- forgot ---
+            if req.path == "/auth/forgot" && req.method == "POST" {
+                match jp.parse(req.body) {
+                    ok(obj) => {
+                        let email = app.field_str(jp, obj, "email")
+                        let stmt = crm_prepare(db, "SELECT id FROM users WHERE email='" + app.sql_escape(email) + "'")
+                        let rc = crm_step(stmt)
+                        if rc == 100 {
+                            let rt = app.new_token()
+                            app.exec(db, "UPDATE users SET reset_token='" + app.sql_escape(rt) + "', reset_expires=" + str(now_ms() + 3600000) + " WHERE email='" + app.sql_escape(email) + "'")
+                            crm_finalize(stmt)
+                            let body = `{"reset_token":"` + rt + `"}`
+                            return app.cors(h, h.respond_json(body))
+                        }
+                        crm_finalize(stmt)
+                        return app.cors(h, h.respond_json(`{"ok":true}`))
+                    }
+                    err(e) => { return app.cors(h, h.respond_400()) }
+                }
+            }
+
+            // --- reset ---
+            if req.path == "/auth/reset" && req.method == "POST" {
+                match jp.parse(req.body) {
+                    ok(obj) => {
+                        let token = app.field_str(jp, obj, "token")
+                        let new_password = app.field_str(jp, obj, "password")
+                        let stmt = crm_prepare(db, "SELECT email,reset_expires FROM users WHERE reset_token='" + app.sql_escape(token) + "'")
+                        let rc = crm_step(stmt)
+                        if rc != 100 {
+                            crm_finalize(stmt)
+                            return app.cors(h, h.respond_json(`{"error":"invalid token"}`))
+                        }
+                        let email = crm_column_text(stmt, 0)
+                        let expires = crm_column_int(stmt, 1)
+                        crm_finalize(stmt)
+                        if token == "" || now_ms() > expires {
+                            return app.cors(h, h.respond_json(`{"error":"invalid token"}`))
+                        }
+                        let ph = app.hash_password(new_password)
+                        app.exec(db, "UPDATE users SET password_hash='" + app.sql_escape(ph) + "', reset_token='', reset_expires=0 WHERE email='" + app.sql_escape(email) + "'")
+                        return app.cors(h, h.respond_json(`{"ok":true}`))
+                    }
+                    err(e) => { return app.cors(h, h.respond_400()) }
+                }
+            }
+
+            // resolve session
+            let mut token = ""
+            if req.headers.contains("Authorization") {
+                let authh = req.headers["Authorization"]
+                if authh.index_of("Bearer ") == 0 {
+                    token = authh.substring(7, authh.length())
+                }
+            }
+            let mut cur_email = ""
+            if token != "" {
+                let sstmt = crm_prepare(db, "SELECT email FROM sessions WHERE token='" + app.sql_escape(token) + "'")
+                if crm_step(sstmt) == 100 {
+                    cur_email = crm_column_text(sstmt, 0)
+                }
+                crm_finalize(sstmt)
+            }
+
+            // auth me
+            if req.path == "/auth/me" && req.method == "GET" {
+                if cur_email == "" {
+                    return app.cors(h, h.respond_json(`{"error":"unauthorized"}`))
+                }
+                let stmt = crm_prepare(db, "SELECT id,name FROM users WHERE email='" + app.sql_escape(cur_email) + "'")
+                if crm_step(stmt) != 100 {
+                    crm_finalize(stmt)
+                    return app.cors(h, h.respond_json(`{"error":"unauthorized"}`))
+                }
+                let uid = crm_column_text(stmt, 0)
+                let uname = crm_column_text(stmt, 1)
+                crm_finalize(stmt)
+                let body = `{"user":` + app.user_json(uid, cur_email, uname) + `}`
+                return app.cors(h, h.respond_json(body))
+            }
+
+            if cur_email == "" {
+                return app.cors(h, h.respond_json(`{"error":"unauthorized"}`))
+            }
+
+            // --- contacts list ---
+            if req.path == "/contacts" && req.method == "GET" {
+                let stmt = crm_prepare(db, "SELECT id,name,email,phone,company_id,notes FROM contacts WHERE owner='" + app.sql_escape(cur_email) + "'")
+                let mut arr = "["
+                let mut first = true
+                while crm_step(stmt) == 100 {
+                    let cid = crm_column_text(stmt, 0)
+                    let cname = crm_column_text(stmt, 1)
+                    let cemail = crm_column_text(stmt, 2)
+                    let cphone = crm_column_text(stmt, 3)
+                    let ccompany = crm_column_text(stmt, 4)
+                    let cnotes = crm_column_text(stmt, 5)
+                    if !first { arr = arr + "," }
+                    arr = arr + app.contact_json(cid, cname, cemail, cphone, ccompany, cnotes)
+                    first = false
+                }
+                crm_finalize(stmt)
+                arr = arr + "]"
+                return app.cors(h, h.respond_json(arr))
+            }
+
+            // --- contacts create ---
+            if req.path == "/contacts" && req.method == "POST" {
+                match jp.parse(req.body) {
+                    ok(obj) => {
+                        let id = app.new_id("c")
+                        let name = app.field_str(jp, obj, "name")
+                        let cemail = app.field_str(jp, obj, "email")
+                        let phone = app.field_str(jp, obj, "phone")
+                        let company_id = app.field_str(jp, obj, "company_id")
+                        let notes = app.field_str(jp, obj, "notes")
+                        app.exec(db, "INSERT INTO contacts (id,owner,name,email,phone,company_id,notes) VALUES ('" + app.sql_escape(id) + "','" + app.sql_escape(cur_email) + "','" + app.sql_escape(name) + "','" + app.sql_escape(cemail) + "','" + app.sql_escape(phone) + "','" + app.sql_escape(company_id) + "','" + app.sql_escape(notes) + "')")
+                        let body = `{"contact":` + app.contact_json(id, name, cemail, phone, company_id, notes) + `}`
+                        return app.cors(h, h.respond_json(body))
+                    }
+                    err(e) => { return app.cors(h, h.respond_400()) }
+                }
+            }
+
+            // --- contact get ---
+            if req.path.index_of("/contacts/") == 0 && req.method == "GET" {
+                let id = req.path.substring(10, req.path.length())
+                let stmt = crm_prepare(db, "SELECT id,name,email,phone,company_id,notes FROM contacts WHERE id='" + app.sql_escape(id) + "' AND owner='" + app.sql_escape(cur_email) + "'")
+                if crm_step(stmt) == 100 {
+                    let cid = crm_column_text(stmt, 0)
+                    let cname = crm_column_text(stmt, 1)
+                    let cemail = crm_column_text(stmt, 2)
+                    let cphone = crm_column_text(stmt, 3)
+                    let ccompany = crm_column_text(stmt, 4)
+                    let cnotes = crm_column_text(stmt, 5)
+                    crm_finalize(stmt)
+                    let body = `{"contact":` + app.contact_json(cid, cname, cemail, cphone, ccompany, cnotes) + `}`
+                    return app.cors(h, h.respond_json(body))
+                }
+                crm_finalize(stmt)
+                return app.cors(h, h.respond_404())
+            }
+
+            // --- contact update (PUT) ---
+            if req.path.index_of("/contacts/") == 0 && req.method == "PUT" {
+                let id = req.path.substring(10, req.path.length())
+                // fetch existing
+                let fstmt = crm_prepare(db, "SELECT name,email,phone,company_id,notes FROM contacts WHERE id='" + app.sql_escape(id) + "' AND owner='" + app.sql_escape(cur_email) + "'")
+                if crm_step(fstmt) != 100 {
+                    crm_finalize(fstmt)
+                    return app.cors(h, h.respond_404())
+                }
+                let mut cname = crm_column_text(fstmt, 0)
+                let mut cemail = crm_column_text(fstmt, 1)
+                let mut cphone = crm_column_text(fstmt, 2)
+                let mut ccompany = crm_column_text(fstmt, 3)
+                let mut cnotes = crm_column_text(fstmt, 4)
+                crm_finalize(fstmt)
+                match jp.parse(req.body) {
+                    ok(obj) => {
+                        let n = app.field_str(jp, obj, "name")
+                        if n != "" { cname = n }
+                        let em = app.field_str(jp, obj, "email")
+                        if em != "" { cemail = em }
+                        let ph = app.field_str(jp, obj, "phone")
+                        if ph != "" { cphone = ph }
+                        let ci = app.field_str(jp, obj, "company_id")
+                        if ci != "" { ccompany = ci }
+                        let nt = app.field_str(jp, obj, "notes")
+                        if nt != "" { cnotes = nt }
+                        app.exec(db, "UPDATE contacts SET name='" + app.sql_escape(cname) + "', email='" + app.sql_escape(cemail) + "', phone='" + app.sql_escape(cphone) + "', company_id='" + app.sql_escape(ccompany) + "', notes='" + app.sql_escape(cnotes) + "' WHERE id='" + app.sql_escape(id) + "' AND owner='" + app.sql_escape(cur_email) + "'")
+                        let body = `{"contact":` + app.contact_json(id, cname, cemail, cphone, ccompany, cnotes) + `}`
+                        return app.cors(h, h.respond_json(body))
+                    }
+                    err(e) => { return app.cors(h, h.respond_400()) }
+                }
+            }
+
+            // --- contact delete ---
+            if req.path.index_of("/contacts/") == 0 && req.method == "DELETE" {
+                let id = req.path.substring(10, req.path.length())
+                app.exec(db, "DELETE FROM contacts WHERE id='" + app.sql_escape(id) + "' AND owner='" + app.sql_escape(cur_email) + "'")
+                return app.cors(h, h.respond_json(`{"ok":true}`))
+            }
+
+            // --- companies list ---
+            if req.path == "/companies" && req.method == "GET" {
+                let stmt = crm_prepare(db, "SELECT id,name,industry,website,notes FROM companies WHERE owner='" + app.sql_escape(cur_email) + "'")
+                let mut arr = "["
+                let mut first = true
+                while crm_step(stmt) == 100 {
+                    let cid = crm_column_text(stmt, 0)
+                    let cname = crm_column_text(stmt, 1)
+                    let cindustry = crm_column_text(stmt, 2)
+                    let cwebsite = crm_column_text(stmt, 3)
+                    let cnotes = crm_column_text(stmt, 4)
+                    if !first { arr = arr + "," }
+                    arr = arr + app.company_json(cid, cname, cindustry, cwebsite, cnotes)
+                    first = false
+                }
+                crm_finalize(stmt)
+                arr = arr + "]"
+                return app.cors(h, h.respond_json(arr))
+            }
+
+            // --- companies create ---
+            if req.path == "/companies" && req.method == "POST" {
+                match jp.parse(req.body) {
+                    ok(obj) => {
+                        let id = app.new_id("co")
+                        let name = app.field_str(jp, obj, "name")
+                        let industry = app.field_str(jp, obj, "industry")
+                        let website = app.field_str(jp, obj, "website")
+                        let notes = app.field_str(jp, obj, "notes")
+                        app.exec(db, "INSERT INTO companies (id,owner,name,industry,website,notes) VALUES ('" + app.sql_escape(id) + "','" + app.sql_escape(cur_email) + "','" + app.sql_escape(name) + "','" + app.sql_escape(industry) + "','" + app.sql_escape(website) + "','" + app.sql_escape(notes) + "')")
+                        let body = `{"company":` + app.company_json(id, name, industry, website, notes) + `}`
+                        return app.cors(h, h.respond_json(body))
+                    }
+                    err(e) => { return app.cors(h, h.respond_400()) }
+                }
+            }
+
+            // --- company get ---
+            if req.path.index_of("/companies/") == 0 && req.method == "GET" {
+                let id = req.path.substring(11, req.path.length())
+                let stmt = crm_prepare(db, "SELECT id,name,industry,website,notes FROM companies WHERE id='" + app.sql_escape(id) + "' AND owner='" + app.sql_escape(cur_email) + "'")
+                if crm_step(stmt) == 100 {
+                    let cid = crm_column_text(stmt, 0)
+                    let cname = crm_column_text(stmt, 1)
+                    let cindustry = crm_column_text(stmt, 2)
+                    let cwebsite = crm_column_text(stmt, 3)
+                    let cnotes = crm_column_text(stmt, 4)
+                    crm_finalize(stmt)
+                    let body = `{"company":` + app.company_json(cid, cname, cindustry, cwebsite, cnotes) + `}`
+                    return app.cors(h, h.respond_json(body))
+                }
+                crm_finalize(stmt)
+                return app.cors(h, h.respond_404())
+            }
+
+            // --- company delete ---
+            if req.path.index_of("/companies/") == 0 && req.method == "DELETE" {
+                let id = req.path.substring(11, req.path.length())
+                app.exec(db, "DELETE FROM companies WHERE id='" + app.sql_escape(id) + "' AND owner='" + app.sql_escape(cur_email) + "'")
+                return app.cors(h, h.respond_json(`{"ok":true}`))
+            }
+
+            // --- deals list ---
+            if req.path == "/deals" && req.method == "GET" {
+                let stmt = crm_prepare(db, "SELECT id,title,contact_id,company_id,amount,stage,created_at FROM deals WHERE owner='" + app.sql_escape(cur_email) + "'")
+                let mut arr = "["
+                let mut first = true
+                while crm_step(stmt) == 100 {
+                    let did = crm_column_text(stmt, 0)
+                    let dtitle = crm_column_text(stmt, 1)
+                    let dcontact = crm_column_text(stmt, 2)
+                    let dcompany = crm_column_text(stmt, 3)
+                    let damount = crm_column_double(stmt, 4)
+                    let dstage = crm_column_text(stmt, 5)
+                    let dcreated = crm_column_int(stmt, 6)
+                    if !first { arr = arr + "," }
+                    arr = arr + app.deal_json(did, dtitle, dcontact, dcompany, damount, dstage, dcreated)
+                    first = false
+                }
+                crm_finalize(stmt)
+                arr = arr + "]"
+                return app.cors(h, h.respond_json(arr))
+            }
+
+            // --- deals create ---
+            if req.path == "/deals" && req.method == "POST" {
+                match jp.parse(req.body) {
+                    ok(obj) => {
+                        let id = app.new_id("d")
+                        let title = app.field_str(jp, obj, "title")
+                        let contact_id = app.field_str(jp, obj, "contact_id")
+                        let company_id = app.field_str(jp, obj, "company_id")
+                        let amount = app.field_float(jp, obj, "amount")
+                        let mut stage = app.field_str(jp, obj, "stage")
+                        if stage == "" { stage = "lead" }
+                        let created_at = now_ms()
+                        app.exec(db, "INSERT INTO deals (id,owner,contact_id,company_id,title,amount,stage,created_at) VALUES ('" + app.sql_escape(id) + "','" + app.sql_escape(cur_email) + "','" + app.sql_escape(contact_id) + "','" + app.sql_escape(company_id) + "','" + app.sql_escape(title) + "'," + str(amount) + ",'" + app.sql_escape(stage) + "'," + str(created_at) + ")")
+                        let body = `{"deal":` + app.deal_json(id, title, contact_id, company_id, amount, stage, created_at) + `}`
+                        return app.cors(h, h.respond_json(body))
+                    }
+                    err(e) => { return app.cors(h, h.respond_400()) }
+                }
+            }
+
+            // --- deal delete ---
+            if req.path.index_of("/deals/") == 0 && req.method == "DELETE" {
+                let id = req.path.substring(7, req.path.length())
+                app.exec(db, "DELETE FROM deals WHERE id='" + app.sql_escape(id) + "' AND owner='" + app.sql_escape(cur_email) + "'")
+                return app.cors(h, h.respond_json(`{"ok":true}`))
+            }
+
+            // --- stats ---
+            if req.path == "/stats" && req.method == "GET" {
+                let mut ccount = 0
+                let mut cocount = 0
+                let mut dcount = 0
+                let s1 = crm_prepare(db, "SELECT COUNT(*) FROM contacts WHERE owner='" + app.sql_escape(cur_email) + "'")
+                if crm_step(s1) == 100 { ccount = crm_column_int(s1, 0) }
+                crm_finalize(s1)
+                let s2 = crm_prepare(db, "SELECT COUNT(*) FROM companies WHERE owner='" + app.sql_escape(cur_email) + "'")
+                if crm_step(s2) == 100 { cocount = crm_column_int(s2, 0) }
+                crm_finalize(s2)
+                let s3 = crm_prepare(db, "SELECT COUNT(*) FROM deals WHERE owner='" + app.sql_escape(cur_email) + "'")
+                if crm_step(s3) == 100 { dcount = crm_column_int(s3, 0) }
+                crm_finalize(s3)
+                let body = `{"contacts":` + str(ccount) + `,"companies":` + str(cocount) + `,"deals":` + str(dcount) + `}`
+                return app.cors(h, h.respond_json(body))
+            }
+
+            return app.cors(h, h.respond_404())
+        }
+
+        let http = Http {}
+        let rc = http.serve(8080, handler)
+        crm_db_close(db)
+        return rc
+    }
+}

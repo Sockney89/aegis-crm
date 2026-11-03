@@ -1,0 +1,11 @@
+{
+  "name": "aegis-crm",
+  "private": true,
+  "workspaces": ["frontend"],
+  "scripts": {
+    "dev:frontend": "npm --workspace frontend run dev",
+    "build:frontend": "npm --workspace frontend run build",
+    "build:backend": "aegis backend/src/main.aegis backend/src/sqlite_helper.c backend/vendor/sqlite3.c --main App::main --emit-exe backend/build/crm.exe",
+    "dev:backend": "backend/build/crm.exe"
+  }
+}

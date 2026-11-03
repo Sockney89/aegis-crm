@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+
+# Build outputs
+frontend/dist/
+backend/build/
+*.exe
+*.o
+*.obj
+*.a
+*.lib
+
+# Database / runtime data
+crm.db
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Vite / tooling
+.vite/
+*.log
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local agent config
+opencode.json
+EOF
