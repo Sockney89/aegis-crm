@@ -53,9 +53,15 @@ The frontend expects the backend at `http://127.0.0.1:8080` (override with `VITE
 ## API overview
 
 - Auth: `POST /auth/register`, `POST /auth/login`, `POST /auth/forgot`, `POST /auth/reset`, `GET /auth/me`
-- Contacts: `/contacts`, `/contacts/{id}`
+- Contacts: `/contacts`, `/contacts/{id}`, `POST /contacts/search`
 - Companies: `/companies`, `/companies/{id}`
-- Deals: `/deals`, `/deals/{id}`
+- Deals: `/deals`, `/deals/{id}`, `POST /deals/search`, `GET /deals/{id}/stages`
+- Activities: `/activities`, `/activities/entity/{type}/{id}`
+- Tasks: `/tasks`, `/tasks/{id}`
+- Tags: `/tags`, `/tags/{id}`, `/entity-tags`, `GET /entity-tags/{type}/{id}`
+- Attachments: `/attachments`, `/attachments/{id}`
+- Audit: `GET /audit`
+- Export: `GET /export/contacts`
 - `GET /stats`, `GET /health`
 
 All protected routes require `Authorization: Bearer <token>`.

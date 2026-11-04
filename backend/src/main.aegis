@@ -93,6 +93,31 @@ impl App {
         return `{"id":"` + h.json_escape(id) + `","title":"` + h.json_escape(title) + `","contact_id":"` + h.json_escape(contact_id) + `","company_id":"` + h.json_escape(company_id) + `","amount":` + str(amount) + `,"stage":"` + h.json_escape(stage) + `","created_at":` + str(created_at) + `}`
     }
 
+    fn activity_json(self, id: Str, entity_type: Str, entity_id: Str, kind: Str, body: Str, created_at: Int) -> Str {
+        let h = Http {}
+        return `{"id":"` + h.json_escape(id) + `","entity_type":"` + h.json_escape(entity_type) + `","entity_id":"` + h.json_escape(entity_id) + `","kind":"` + h.json_escape(kind) + `","body":"` + h.json_escape(body) + `","created_at":` + str(created_at) + `}`
+    }
+
+    fn task_json(self, id: Str, title: Str, description: Str, due_at: Int, status: Str, priority: Str, contact_id: Str, deal_id: Str, created_at: Int) -> Str {
+        let h = Http {}
+        return `{"id":"` + h.json_escape(id) + `","title":"` + h.json_escape(title) + `","description":"` + h.json_escape(description) + `","due_at":` + str(due_at) + `,"status":"` + h.json_escape(status) + `","priority":"` + h.json_escape(priority) + `","contact_id":"` + h.json_escape(contact_id) + `","deal_id":"` + h.json_escape(deal_id) + `","created_at":` + str(created_at) + `}`
+    }
+
+    fn tag_json(self, id: Str, name: Str) -> Str {
+        let h = Http {}
+        return `{"id":"` + h.json_escape(id) + `","name":"` + h.json_escape(name) + `"}`
+    }
+
+    fn attachment_json(self, id: Str, entity_type: Str, entity_id: Str, filename: Str, url: Str, created_at: Int) -> Str {
+        let h = Http {}
+        return `{"id":"` + h.json_escape(id) + `","entity_type":"` + h.json_escape(entity_type) + `","entity_id":"` + h.json_escape(entity_id) + `","filename":"` + h.json_escape(filename) + `","url":"` + h.json_escape(url) + `","created_at":` + str(created_at) + `}`
+    }
+
+    fn audit_json(self, id: Str, action: Str, entity_type: Str, entity_id: Str, details: Str, created_at: Int) -> Str {
+        let h = Http {}
+        return `{"id":"` + h.json_escape(id) + `","action":"` + h.json_escape(action) + `","entity_type":"` + h.json_escape(entity_type) + `","entity_id":"` + h.json_escape(entity_id) + `","details":"` + h.json_escape(details) + `","created_at":` + str(created_at) + `}`
+    }
+
     fn main(self) -> Int {
         let db = crm_db_open("crm.db")
         if db == null {
@@ -105,11 +130,31 @@ impl App {
         self.exec(db, "CREATE TABLE IF NOT EXISTS contacts (id TEXT PRIMARY KEY, owner TEXT, name TEXT, email TEXT, phone TEXT, company_id TEXT, notes TEXT)")
         self.exec(db, "CREATE TABLE IF NOT EXISTS companies (id TEXT PRIMARY KEY, owner TEXT, name TEXT, industry TEXT, website TEXT, notes TEXT)")
         self.exec(db, "CREATE TABLE IF NOT EXISTS deals (id TEXT PRIMARY KEY, owner TEXT, contact_id TEXT, company_id TEXT, title TEXT, amount REAL, stage TEXT, created_at INTEGER)")
+self.exec(db, "CREATE TABLE IF NOT EXISTS activities (id TEXT PRIMARY KEY, owner TEXT, entity_type TEXT, entity_id TEXT, kind TEXT, body TEXT, created_at INTEGER)")
+self.exec(db, "CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, owner TEXT, title TEXT, description TEXT, due_at INTEGER, status TEXT, priority TEXT, contact_id TEXT, deal_id TEXT, created_at INTEGER)")
+self.exec(db, "CREATE TABLE IF NOT EXISTS deal_stages (id TEXT PRIMARY KEY, deal_id TEXT, stage TEXT, changed_at INTEGER)")
+self.exec(db, "CREATE TABLE IF NOT EXISTS tags (id TEXT PRIMARY KEY, owner TEXT, name TEXT)")
+self.exec(db, "CREATE TABLE IF NOT EXISTS entity_tags (entity_type TEXT, entity_id TEXT, tag_id TEXT)")
+self.exec(db, "CREATE TABLE IF NOT EXISTS audit_log (id TEXT PRIMARY KEY, owner TEXT, action TEXT, entity_type TEXT, entity_id TEXT, details TEXT, created_at INTEGER)")
+self.exec(db, "CREATE TABLE IF NOT EXISTS attachments (id TEXT PRIMARY KEY, owner TEXT, entity_type TEXT, entity_id TEXT, filename TEXT, url TEXT, created_at INTEGER)")
+
+let mut rate_counts: Map[Str, Int] = {}
 
         let handler = |req: Request| -> Response {
             let h = Http {}
             let jp = JsonParser {}
             let app = App {}
+
+            // request log
+            println(req.method + " " + req.path)
+
+            // rate limiting (per token/ip-ish)
+            let mut rl_key = req.headers.get_or("Authorization", "anon")
+            let rl_count = rate_counts.get_or(rl_key, 0) + 1
+            rate_counts.insert(rl_key, rl_count)
+            if rl_count > 500 {
+                return app.cors(h, h.respond_json(`{"error":"rate limited"}`))
+            }
 
             if req.method == "OPTIONS" {
                 return app.cors(h, h.respond_ok(""))
@@ -462,7 +507,47 @@ impl App {
                         if stage == "" { stage = "lead" }
                         let created_at = now_ms()
                         app.exec(db, "INSERT INTO deals (id,owner,contact_id,company_id,title,amount,stage,created_at) VALUES ('" + app.sql_escape(id) + "','" + app.sql_escape(cur_email) + "','" + app.sql_escape(contact_id) + "','" + app.sql_escape(company_id) + "','" + app.sql_escape(title) + "'," + str(amount) + ",'" + app.sql_escape(stage) + "'," + str(created_at) + ")")
+                        app.exec(db, "INSERT INTO deal_stages (id,deal_id,stage,changed_at) VALUES ('" + app.sql_escape(app.new_id("ds")) + "','" + app.sql_escape(id) + "','" + app.sql_escape(stage) + "'," + str(created_at) + ")")
+                        app.exec(db, "INSERT INTO audit_log (id,owner,action,entity_type,entity_id,details,created_at) VALUES ('" + app.sql_escape(app.new_id("au")) + "','" + app.sql_escape(cur_email) + "','create','deal','" + app.sql_escape(id) + "','', " + str(created_at) + ")")
                         let body = `{"deal":` + app.deal_json(id, title, contact_id, company_id, amount, stage, created_at) + `}`
+                        return app.cors(h, h.respond_json(body))
+                    }
+                    err(e) => { return app.cors(h, h.respond_400()) }
+                }
+            }
+
+// --- deal update ---
+            if req.path.index_of("/deals/") == 0 && req.method == "PUT" {
+                let id = req.path.substring(7, req.path.length())
+                let fstmt = crm_prepare(db, "SELECT title,contact_id,company_id,amount,stage FROM deals WHERE id='" + app.sql_escape(id) + "' AND owner='" + app.sql_escape(cur_email) + "'")
+                if crm_step(fstmt) != 100 {
+                    crm_finalize(fstmt)
+                    return app.cors(h, h.respond_404())
+                }
+                let mut dtitle = crm_column_text(fstmt, 0)
+                let mut dcontact = crm_column_text(fstmt, 1)
+                let mut dcompany = crm_column_text(fstmt, 2)
+                let mut damount = crm_column_double(fstmt, 3)
+                let mut dstage = crm_column_text(fstmt, 4)
+                crm_finalize(fstmt)
+                match jp.parse(req.body) {
+                    ok(obj) => {
+                        let t = app.field_str(jp, obj, "title")
+                        if t != "" { dtitle = t }
+                        let ci = app.field_str(jp, obj, "contact_id")
+                        if ci != "" { dcontact = ci }
+                        let co = app.field_str(jp, obj, "company_id")
+                        if co != "" { dcompany = co }
+                        let a = app.field_float(jp, obj, "amount")
+                        if a != 0.0 { damount = a }
+                        let st = app.field_str(jp, obj, "stage")
+                        if st != "" && st != dstage {
+                            dstage = st
+                            app.exec(db, "INSERT INTO deal_stages (id,deal_id,stage,changed_at) VALUES ('" + app.sql_escape(app.new_id("ds")) + "','" + app.sql_escape(id) + "','" + app.sql_escape(dstage) + "'," + str(now_ms()) + ")")
+                        }
+                        app.exec(db, "UPDATE deals SET title='" + app.sql_escape(dtitle) + "', contact_id='" + app.sql_escape(dcontact) + "', company_id='" + app.sql_escape(dcompany) + "', amount=" + str(damount) + ", stage='" + app.sql_escape(dstage) + "' WHERE id='" + app.sql_escape(id) + "' AND owner='" + app.sql_escape(cur_email) + "'")
+                        let created_at = now_ms()
+                        let body = `{"deal":` + app.deal_json(id, dtitle, dcontact, dcompany, damount, dstage, created_at) + `}`
                         return app.cors(h, h.respond_json(body))
                     }
                     err(e) => { return app.cors(h, h.respond_400()) }
@@ -476,11 +561,429 @@ impl App {
                 return app.cors(h, h.respond_json(`{"ok":true}`))
             }
 
-            // --- stats ---
+            // --- activities list ---
+            if req.path == "/activities" && req.method == "GET" {
+                let stmt = crm_prepare(db, "SELECT id,entity_type,entity_id,kind,body,created_at FROM activities WHERE owner='" + app.sql_escape(cur_email) + "' ORDER BY created_at DESC")
+                let mut arr = "["
+                let mut first = true
+                while crm_step(stmt) == 100 {
+                    let aid = crm_column_text(stmt, 0)
+                    let aet = crm_column_text(stmt, 1)
+                    let aeid = crm_column_text(stmt, 2)
+                    let ak = crm_column_text(stmt, 3)
+                    let ab = crm_column_text(stmt, 4)
+                    let ac = crm_column_int(stmt, 5)
+                    if !first { arr = arr + "," }
+                    arr = arr + app.activity_json(aid, aet, aeid, ak, ab, ac)
+                    first = false
+                }
+                crm_finalize(stmt)
+                arr = arr + "]"
+                return app.cors(h, h.respond_json(arr))
+            }
+
+            // --- activities create ---
+            if req.path == "/activities" && req.method == "POST" {
+                match jp.parse(req.body) {
+                    ok(obj) => {
+                        let id = app.new_id("a")
+                        let entity_type = app.field_str(jp, obj, "entity_type")
+                        let entity_id = app.field_str(jp, obj, "entity_id")
+                        let kind = app.field_str(jp, obj, "kind")
+                        let bodyt = app.field_str(jp, obj, "body")
+                        let created_at = now_ms()
+                        app.exec(db, "INSERT INTO activities (id,owner,entity_type,entity_id,kind,body,created_at) VALUES ('" + app.sql_escape(id) + "','" + app.sql_escape(cur_email) + "','" + app.sql_escape(entity_type) + "','" + app.sql_escape(entity_id) + "','" + app.sql_escape(kind) + "','" + app.sql_escape(bodyt) + "'," + str(created_at) + ")")
+                        app.exec(db, "INSERT INTO audit_log (id,owner,action,entity_type,entity_id,details,created_at) VALUES ('" + app.sql_escape(app.new_id("au")) + "','" + app.sql_escape(cur_email) + "','create','activity','" + app.sql_escape(id) + "','', " + str(created_at) + ")")
+                        let body = `{"activity":` + app.activity_json(id, entity_type, entity_id, kind, bodyt, created_at) + `}`
+                        return app.cors(h, h.respond_json(body))
+                    }
+                    err(e) => { return app.cors(h, h.respond_400()) }
+                }
+            }
+
+            // --- activities delete ---
+            if req.path.index_of("/activities/") == 0 && req.method == "DELETE" {
+                let id = req.path.substring(12, req.path.length())
+                app.exec(db, "DELETE FROM activities WHERE id='" + app.sql_escape(id) + "' AND owner='" + app.sql_escape(cur_email) + "'")
+                return app.cors(h, h.respond_json(`{"ok":true}`))
+            }
+
+            // --- activities by entity ---
+            if req.path.index_of("/activities/entity/") == 0 && req.method == "GET" {
+                // /activities/entity/{type}/{id}
+                let rest = req.path.substring(20, req.path.length())
+                let slash = rest.index_of("/")
+                if slash < 0 {
+                    return app.cors(h, h.respond_404())
+                }
+                let et = rest.substring(0, slash)
+                let eid = rest.substring(slash + 1, rest.length())
+                let stmt = crm_prepare(db, "SELECT id,entity_type,entity_id,kind,body,created_at FROM activities WHERE owner='" + app.sql_escape(cur_email) + "' AND entity_type='" + app.sql_escape(et) + "' AND entity_id='" + app.sql_escape(eid) + "' ORDER BY created_at DESC")
+                let mut arr = "["
+                let mut first = true
+                while crm_step(stmt) == 100 {
+                    let aid = crm_column_text(stmt, 0)
+                    let aet = crm_column_text(stmt, 1)
+                    let aeid = crm_column_text(stmt, 2)
+                    let ak = crm_column_text(stmt, 3)
+                    let ab = crm_column_text(stmt, 4)
+                    let ac = crm_column_int(stmt, 5)
+                    if !first { arr = arr + "," }
+                    arr = arr + app.activity_json(aid, aet, aeid, ak, ab, ac)
+                    first = false
+                }
+                crm_finalize(stmt)
+                arr = arr + "]"
+                return app.cors(h, h.respond_json(arr))
+            }
+
+            // --- tasks list ---
+            if req.path == "/tasks" && req.method == "GET" {
+                let stmt = crm_prepare(db, "SELECT id,title,description,due_at,status,priority,contact_id,deal_id,created_at FROM tasks WHERE owner='" + app.sql_escape(cur_email) + "' ORDER BY due_at ASC")
+                let mut arr = "["
+                let mut first = true
+                while crm_step(stmt) == 100 {
+                    let tid = crm_column_text(stmt, 0)
+                    let ttitle = crm_column_text(stmt, 1)
+                    let tdesc = crm_column_text(stmt, 2)
+                    let tdue = crm_column_int(stmt, 3)
+                    let tstatus = crm_column_text(stmt, 4)
+                    let tprio = crm_column_text(stmt, 5)
+                    let tcid = crm_column_text(stmt, 6)
+                    let tdid = crm_column_text(stmt, 7)
+                    let tcreated = crm_column_int(stmt, 8)
+                    if !first { arr = arr + "," }
+                    arr = arr + app.task_json(tid, ttitle, tdesc, tdue, tstatus, tprio, tcid, tdid, tcreated)
+                    first = false
+                }
+                crm_finalize(stmt)
+                arr = arr + "]"
+                return app.cors(h, h.respond_json(arr))
+            }
+
+            // --- tasks create ---
+            if req.path == "/tasks" && req.method == "POST" {
+                match jp.parse(req.body) {
+                    ok(obj) => {
+                        let id = app.new_id("t")
+                        let title = app.field_str(jp, obj, "title")
+                        let description = app.field_str(jp, obj, "description")
+                        let mut status = app.field_str(jp, obj, "status")
+                        if status == "" { status = "open" }
+                        let mut priority = app.field_str(jp, obj, "priority")
+                        if priority == "" { priority = "medium" }
+                        let contact_id = app.field_str(jp, obj, "contact_id")
+                        let deal_id = app.field_str(jp, obj, "deal_id")
+                        let due_f = app.field_float(jp, obj, "due_at")
+                        let due_i = due_f.to_int()
+                        let created_at = now_ms()
+                        app.exec(db, "INSERT INTO tasks (id,owner,title,description,due_at,status,priority,contact_id,deal_id,created_at) VALUES ('" + app.sql_escape(id) + "','" + app.sql_escape(cur_email) + "','" + app.sql_escape(title) + "','" + app.sql_escape(description) + "'," + str(due_i) + ",'" + app.sql_escape(status) + "','" + app.sql_escape(priority) + "','" + app.sql_escape(contact_id) + "','" + app.sql_escape(deal_id) + "'," + str(created_at) + ")")
+                        app.exec(db, "INSERT INTO audit_log (id,owner,action,entity_type,entity_id,details,created_at) VALUES ('" + app.sql_escape(app.new_id("au")) + "','" + app.sql_escape(cur_email) + "','create','task','" + app.sql_escape(id) + "','', " + str(created_at) + ")")
+                        let body = `{"task":` + app.task_json(id, title, description, due_i, status, priority, contact_id, deal_id, created_at) + `}`
+                        return app.cors(h, h.respond_json(body))
+                    }
+                    err(e) => { return app.cors(h, h.respond_400()) }
+                }
+            }
+
+            // --- task update ---
+            if req.path.index_of("/tasks/") == 0 && req.method == "PUT" {
+                let id = req.path.substring(7, req.path.length())
+                let fstmt = crm_prepare(db, "SELECT title,description,due_at,status,priority,contact_id,deal_id FROM tasks WHERE id='" + app.sql_escape(id) + "' AND owner='" + app.sql_escape(cur_email) + "'")
+                if crm_step(fstmt) != 100 {
+                    crm_finalize(fstmt)
+                    return app.cors(h, h.respond_404())
+                }
+                let mut ttitle = crm_column_text(fstmt, 0)
+                let mut tdesc = crm_column_text(fstmt, 1)
+                let mut tdue = crm_column_int(fstmt, 2)
+                let mut tstatus = crm_column_text(fstmt, 3)
+                let mut tprio = crm_column_text(fstmt, 4)
+                let mut tcid = crm_column_text(fstmt, 5)
+                let mut tdid = crm_column_text(fstmt, 6)
+                crm_finalize(fstmt)
+                match jp.parse(req.body) {
+                    ok(obj) => {
+                        let n = app.field_str(jp, obj, "title")
+                        if n != "" { ttitle = n }
+                        let d = app.field_str(jp, obj, "description")
+                        if d != "" { tdesc = d }
+                        let s = app.field_str(jp, obj, "status")
+                        if s != "" { tstatus = s }
+                        let pr = app.field_str(jp, obj, "priority")
+                        if pr != "" { tprio = pr }
+                        let ci = app.field_str(jp, obj, "contact_id")
+                        if ci != "" { tcid = ci }
+                        let di = app.field_str(jp, obj, "deal_id")
+                        if di != "" { tdid = di }
+                        app.exec(db, "UPDATE tasks SET title='" + app.sql_escape(ttitle) + "', description='" + app.sql_escape(tdesc) + "', due_at=" + str(tdue) + ", status='" + app.sql_escape(tstatus) + "', priority='" + app.sql_escape(tprio) + "', contact_id='" + app.sql_escape(tcid) + "', deal_id='" + app.sql_escape(tdid) + "' WHERE id='" + app.sql_escape(id) + "' AND owner='" + app.sql_escape(cur_email) + "'")
+                        let created_at = now_ms()
+                        let body = `{"task":` + app.task_json(id, ttitle, tdesc, tdue, tstatus, tprio, tcid, tdid, created_at) + `}`
+                        return app.cors(h, h.respond_json(body))
+                    }
+                    err(e) => { return app.cors(h, h.respond_400()) }
+                }
+            }
+
+            // --- task delete ---
+            if req.path.index_of("/tasks/") == 0 && req.method == "DELETE" {
+                let id = req.path.substring(7, req.path.length())
+                app.exec(db, "DELETE FROM tasks WHERE id='" + app.sql_escape(id) + "' AND owner='" + app.sql_escape(cur_email) + "'")
+                return app.cors(h, h.respond_json(`{"ok":true}`))
+            }
+
+            // --- tags list ---
+            if req.path == "/tags" && req.method == "GET" {
+                let stmt = crm_prepare(db, "SELECT id,name FROM tags WHERE owner='" + app.sql_escape(cur_email) + "'")
+                let mut arr = "["
+                let mut first = true
+                while crm_step(stmt) == 100 {
+                    let tid = crm_column_text(stmt, 0)
+                    let tname = crm_column_text(stmt, 1)
+                    if !first { arr = arr + "," }
+                    arr = arr + app.tag_json(tid, tname)
+                    first = false
+                }
+                crm_finalize(stmt)
+                arr = arr + "]"
+                return app.cors(h, h.respond_json(arr))
+            }
+
+            // --- tags create ---
+            if req.path == "/tags" && req.method == "POST" {
+                match jp.parse(req.body) {
+                    ok(obj) => {
+                        let id = app.new_id("tag")
+                        let name = app.field_str(jp, obj, "name")
+                        app.exec(db, "INSERT INTO tags (id,owner,name) VALUES ('" + app.sql_escape(id) + "','" + app.sql_escape(cur_email) + "','" + app.sql_escape(name) + "')")
+                        let body = `{"tag":` + app.tag_json(id, name) + `}`
+                        return app.cors(h, h.respond_json(body))
+                    }
+                    err(e) => { return app.cors(h, h.respond_400()) }
+                }
+            }
+
+            // --- tag delete ---
+            if req.path.index_of("/tags/") == 0 && req.method == "DELETE" {
+                let id = req.path.substring(6, req.path.length())
+                app.exec(db, "DELETE FROM tags WHERE id='" + app.sql_escape(id) + "' AND owner='" + app.sql_escape(cur_email) + "'")
+                app.exec(db, "DELETE FROM entity_tags WHERE tag_id='" + app.sql_escape(id) + "'")
+                return app.cors(h, h.respond_json(`{"ok":true}`))
+            }
+
+            // --- attach tag to entity ---
+            if req.path == "/entity-tags" && req.method == "POST" {
+                match jp.parse(req.body) {
+                    ok(obj) => {
+                        let entity_type = app.field_str(jp, obj, "entity_type")
+                        let entity_id = app.field_str(jp, obj, "entity_id")
+                        let tag_id = app.field_str(jp, obj, "tag_id")
+                        app.exec(db, "INSERT INTO entity_tags (entity_type,entity_id,tag_id) VALUES ('" + app.sql_escape(entity_type) + "','" + app.sql_escape(entity_id) + "','" + app.sql_escape(tag_id) + "')")
+                        return app.cors(h, h.respond_json(`{"ok":true}`))
+                    }
+                    err(e) => { return app.cors(h, h.respond_400()) }
+                }
+            }
+
+            // --- list tags for entity ---
+            if req.path.index_of("/entity-tags/") == 0 && req.method == "GET" {
+                // /entity-tags/{type}/{id}
+                let rest = req.path.substring(13, req.path.length())
+                let slash = rest.index_of("/")
+                if slash < 0 {
+                    return app.cors(h, h.respond_404())
+                }
+                let et = rest.substring(0, slash)
+                let eid = rest.substring(slash + 1, rest.length())
+                let stmt = crm_prepare(db, "SELECT t.id,t.name FROM tags t JOIN entity_tags et ON et.tag_id=t.id WHERE et.entity_type='" + app.sql_escape(et) + "' AND et.entity_id='" + app.sql_escape(eid) + "'")
+                let mut arr = "["
+                let mut first = true
+                while crm_step(stmt) == 100 {
+                    let tid = crm_column_text(stmt, 0)
+                    let tname = crm_column_text(stmt, 1)
+                    if !first { arr = arr + "," }
+                    arr = arr + app.tag_json(tid, tname)
+                    first = false
+                }
+                crm_finalize(stmt)
+                arr = arr + "]"
+                return app.cors(h, h.respond_json(arr))
+            }
+
+            // --- attachments list ---
+            if req.path == "/attachments" && req.method == "GET" {
+                let stmt = crm_prepare(db, "SELECT id,entity_type,entity_id,filename,url,created_at FROM attachments WHERE owner='" + app.sql_escape(cur_email) + "'")
+                let mut arr = "["
+                let mut first = true
+                while crm_step(stmt) == 100 {
+                    let aid = crm_column_text(stmt, 0)
+                    let aet = crm_column_text(stmt, 1)
+                    let aeid = crm_column_text(stmt, 2)
+                    let afn = crm_column_text(stmt, 3)
+                    let aurl = crm_column_text(stmt, 4)
+                    let ac = crm_column_int(stmt, 5)
+                    if !first { arr = arr + "," }
+                    arr = arr + app.attachment_json(aid, aet, aeid, afn, aurl, ac)
+                    first = false
+                }
+                crm_finalize(stmt)
+                arr = arr + "]"
+                return app.cors(h, h.respond_json(arr))
+            }
+
+            // --- attachments create ---
+            if req.path == "/attachments" && req.method == "POST" {
+                match jp.parse(req.body) {
+                    ok(obj) => {
+                        let id = app.new_id("att")
+                        let entity_type = app.field_str(jp, obj, "entity_type")
+                        let entity_id = app.field_str(jp, obj, "entity_id")
+                        let filename = app.field_str(jp, obj, "filename")
+                        let url = app.field_str(jp, obj, "url")
+                        let created_at = now_ms()
+                        app.exec(db, "INSERT INTO attachments (id,owner,entity_type,entity_id,filename,url,created_at) VALUES ('" + app.sql_escape(id) + "','" + app.sql_escape(cur_email) + "','" + app.sql_escape(entity_type) + "','" + app.sql_escape(entity_id) + "','" + app.sql_escape(filename) + "','" + app.sql_escape(url) + "'," + str(created_at) + ")")
+                        let body = `{"attachment":` + app.attachment_json(id, entity_type, entity_id, filename, url, created_at) + `}`
+                        return app.cors(h, h.respond_json(body))
+                    }
+                    err(e) => { return app.cors(h, h.respond_400()) }
+                }
+            }
+
+            // --- attachment delete ---
+            if req.path.index_of("/attachments/") == 0 && req.method == "DELETE" {
+                let id = req.path.substring(13, req.path.length())
+                app.exec(db, "DELETE FROM attachments WHERE id='" + app.sql_escape(id) + "' AND owner='" + app.sql_escape(cur_email) + "'")
+                return app.cors(h, h.respond_json(`{"ok":true}`))
+            }
+
+            // --- audit log list ---
+            if req.path == "/audit" && req.method == "GET" {
+                let stmt = crm_prepare(db, "SELECT id,action,entity_type,entity_id,details,created_at FROM audit_log WHERE owner='" + app.sql_escape(cur_email) + "' ORDER BY created_at DESC")
+                let mut arr = "["
+                let mut first = true
+                while crm_step(stmt) == 100 {
+                    let aid = crm_column_text(stmt, 0)
+                    let aaction = crm_column_text(stmt, 1)
+                    let aet = crm_column_text(stmt, 2)
+                    let aeid = crm_column_text(stmt, 3)
+                    let adet = crm_column_text(stmt, 4)
+                    let ac = crm_column_int(stmt, 5)
+                    if !first { arr = arr + "," }
+                    arr = arr + app.audit_json(aid, aaction, aet, aeid, adet, ac)
+                    first = false
+                }
+                crm_finalize(stmt)
+                arr = arr + "]"
+                return app.cors(h, h.respond_json(arr))
+            }
+
+            // --- deal stage history ---
+            if req.path.index_of("/deals/") == 0 && req.path.index_of("/stages") > 0 && req.method == "GET" {
+                let id = req.path.substring(7, req.path.index_of("/stages"))
+                let stmt = crm_prepare(db, "SELECT id,deal_id,stage,changed_at FROM deal_stages WHERE deal_id='" + app.sql_escape(id) + "' ORDER BY changed_at ASC")
+                let mut arr = "["
+                let mut first = true
+                while crm_step(stmt) == 100 {
+                    let sid = crm_column_text(stmt, 0)
+                    let sdeal = crm_column_text(stmt, 1)
+                    let sstage = crm_column_text(stmt, 2)
+                    let schanged = crm_column_int(stmt, 3)
+                    if !first { arr = arr + "," }
+                    let h2 = Http {}
+                    arr = arr + `{"id":"` + h2.json_escape(sid) + `","deal_id":"` + h2.json_escape(sdeal) + `","stage":"` + h2.json_escape(sstage) + `","changed_at":` + str(schanged) + `}`
+                    first = false
+                }
+                crm_finalize(stmt)
+                arr = arr + "]"
+                return app.cors(h, h.respond_json(arr))
+            }
+
+            // --- export contacts csv ---
+            if req.path == "/export/contacts" && req.method == "GET" {
+                let stmt = crm_prepare(db, "SELECT id,name,email,phone,company_id,notes FROM contacts WHERE owner='" + app.sql_escape(cur_email) + "'")
+                let mut csv = "id,name,email,phone,company_id,notes\n"
+                while crm_step(stmt) == 100 {
+                    let cid = crm_column_text(stmt, 0)
+                    let cname = crm_column_text(stmt, 1)
+                    let cemail = crm_column_text(stmt, 2)
+                    let cphone = crm_column_text(stmt, 3)
+                    let ccompany = crm_column_text(stmt, 4)
+                    let cnotes = crm_column_text(stmt, 5)
+                    csv = csv + cid + "," + cname + "," + cemail + "," + cphone + "," + ccompany + "," + cnotes + "\n"
+                }
+                crm_finalize(stmt)
+                let r = h.respond_ok(csv)
+                let r2 = h.with_header(r, "Content-Type", "text/csv")
+                return app.cors(h, r2)
+            }
+
+            // --- search contacts ---
+            if req.path == "/contacts/search" && req.method == "POST" {
+                match jp.parse(req.body) {
+                    ok(obj) => {
+                        let q = app.field_str(jp, obj, "q")
+                        let stmt = crm_prepare(db, "SELECT id,name,email,phone,company_id,notes FROM contacts WHERE owner='" + app.sql_escape(cur_email) + "'")
+                        let mut arr = "["
+                        let mut first = true
+                        while crm_step(stmt) == 100 {
+                            let cid = crm_column_text(stmt, 0)
+                            let cname = crm_column_text(stmt, 1)
+                            let cemail = crm_column_text(stmt, 2)
+                            let cphone = crm_column_text(stmt, 3)
+                            let ccompany = crm_column_text(stmt, 4)
+                            let cnotes = crm_column_text(stmt, 5)
+                            if q == "" || cname.index_of(q) >= 0 || cemail.index_of(q) >= 0 || cnotes.index_of(q) >= 0 {
+                                if !first { arr = arr + "," }
+                                arr = arr + app.contact_json(cid, cname, cemail, cphone, ccompany, cnotes)
+                                first = false
+                            }
+                        }
+                        crm_finalize(stmt)
+                        arr = arr + "]"
+                        return app.cors(h, h.respond_json(arr))
+                    }
+                    err(e) => { return app.cors(h, h.respond_400()) }
+                }
+            }
+
+            // --- search deals by stage ---
+            if req.path == "/deals/search" && req.method == "POST" {
+                match jp.parse(req.body) {
+                    ok(obj) => {
+                        let stage = app.field_str(jp, obj, "stage")
+                        let mut sql = "SELECT id,title,contact_id,company_id,amount,stage,created_at FROM deals WHERE owner='" + app.sql_escape(cur_email) + "'"
+                        if stage != "" {
+                            sql = "SELECT id,title,contact_id,company_id,amount,stage,created_at FROM deals WHERE owner='" + app.sql_escape(cur_email) + "' AND stage='" + app.sql_escape(stage) + "'"
+                        }
+                        let stmt = crm_prepare(db, sql)
+                        let mut arr = "["
+                        let mut first = true
+                        while crm_step(stmt) == 100 {
+                            let did = crm_column_text(stmt, 0)
+                            let dtitle = crm_column_text(stmt, 1)
+                            let dcontact = crm_column_text(stmt, 2)
+                            let dcompany = crm_column_text(stmt, 3)
+                            let damount = crm_column_double(stmt, 4)
+                            let dstage = crm_column_text(stmt, 5)
+                            let dcreated = crm_column_int(stmt, 6)
+                            if !first { arr = arr + "," }
+                            arr = arr + app.deal_json(did, dtitle, dcontact, dcompany, damount, dstage, dcreated)
+                            first = false
+                        }
+                        crm_finalize(stmt)
+                        arr = arr + "]"
+                        return app.cors(h, h.respond_json(arr))
+                    }
+                    err(e) => { return app.cors(h, h.respond_400()) }
+                }
+            }
+// --- stats ---
             if req.path == "/stats" && req.method == "GET" {
                 let mut ccount = 0
                 let mut cocount = 0
                 let mut dcount = 0
+                let mut pipeline = 0.0
+                let mut open_tasks = 0
                 let s1 = crm_prepare(db, "SELECT COUNT(*) FROM contacts WHERE owner='" + app.sql_escape(cur_email) + "'")
                 if crm_step(s1) == 100 { ccount = crm_column_int(s1, 0) }
                 crm_finalize(s1)
@@ -490,7 +993,15 @@ impl App {
                 let s3 = crm_prepare(db, "SELECT COUNT(*) FROM deals WHERE owner='" + app.sql_escape(cur_email) + "'")
                 if crm_step(s3) == 100 { dcount = crm_column_int(s3, 0) }
                 crm_finalize(s3)
-                let body = `{"contacts":` + str(ccount) + `,"companies":` + str(cocount) + `,"deals":` + str(dcount) + `}`
+                let s4 = crm_prepare(db, "SELECT amount FROM deals WHERE owner='" + app.sql_escape(cur_email) + "'")
+                while crm_step(s4) == 100 {
+                    pipeline = pipeline + crm_column_double(s4, 0)
+                }
+                crm_finalize(s4)
+                let s5 = crm_prepare(db, "SELECT COUNT(*) FROM tasks WHERE owner='" + app.sql_escape(cur_email) + "' AND status='open'")
+                if crm_step(s5) == 100 { open_tasks = crm_column_int(s5, 0) }
+                crm_finalize(s5)
+                let body = `{"contacts":` + str(ccount) + `,"companies":` + str(cocount) + `,"deals":` + str(dcount) + `,"pipeline_value":` + str(pipeline) + `,"open_tasks":` + str(open_tasks) + `}`
                 return app.cors(h, h.respond_json(body))
             }
 
