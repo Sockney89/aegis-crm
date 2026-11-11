@@ -1,123 +1,4 @@
-extern "C" fn crm_db_open(path: Str) -> Handle[Db]
-extern "C" fn crm_db_close(db: Handle[Db]) -> Empty
-extern "C" fn crm_exec(db: Handle[Db], sql: Str) -> Int
-extern "C" fn crm_errmsg(db: Handle[Db]) -> Str
-extern "C" fn crm_prepare(db: Handle[Db], sql: Str) -> Handle[Stmt]
-extern "C" fn crm_step(stmt: Handle[Stmt]) -> Int
-extern "C" fn crm_finalize(stmt: Handle[Stmt]) -> Int
-extern "C" fn crm_column_count(stmt: Handle[Stmt]) -> Int
-extern "C" fn crm_column_text(stmt: Handle[Stmt], i: Int) -> Str
-extern "C" fn crm_column_int(stmt: Handle[Stmt], i: Int) -> Int
-extern "C" fn crm_column_double(stmt: Handle[Stmt], i: Int) -> Float
-extern "C" fn crm_bind_text(stmt: Handle[Stmt], index: Int, value: Str) -> Int
-extern "C" fn crm_bind_int(stmt: Handle[Stmt], index: Int, value: Int) -> Int
-extern "C" fn crm_bind_double(stmt: Handle[Stmt], index: Int, value: Float) -> Int
-extern "C" fn crm_reset(stmt: Handle[Stmt]) -> Empty
-
-struct App { }
-
 impl App {
-    fn cors(self, h: Http, r: Response) -> Response {
-        let r1 = h.with_header(r, "Access-Control-Allow-Origin", "*")
-        let r2 = h.with_header(r1, "Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
-        let r3 = h.with_header(r2, "Access-Control-Allow-Headers", "Content-Type,Authorization")
-        return r3
-    }
-
-    fn field_str(self, jp: JsonParser, obj: Json, key: Str) -> Str {
-        match jp.get(obj, key) {
-            some(v) => {
-                match jp.as_str(v) {
-                    some(s) => { return s }
-                    none => { return "" }
-                }
-            }
-            none => { return "" }
-        }
-        return ""
-    }
-
-    fn field_float(self, jp: JsonParser, obj: Json, key: Str) -> Float {
-        match jp.get(obj, key) {
-            some(v) => {
-                match jp.as_float(v) {
-                    some(f) => { return f }
-                    none => { return 0.0 }
-                }
-            }
-            none => { return 0.0 }
-        }
-        return 0.0
-    }
-
-    fn sql_escape(self, s: Str) -> Str {
-        return s.replace("'", "''")
-    }
-
-    fn exec(self, db: Handle[Db], sql: Str) -> Empty {
-        let rc = crm_exec(db, sql)
-        if rc != 0 {
-            println("SQL err: " + crm_errmsg(db))
-        }
-    }
-
-    fn new_id(self, prefix: Str) -> Str {
-        return prefix + "_" + str(now_ms()) + "_" + str(rand_int(1000, 9999))
-    }
-
-    fn new_token(self) -> Str {
-        return "tok_" + str(now_ms()) + "_" + str(rand_int(100000, 999999))
-    }
-
-    fn hash_password(self, p: Str) -> Str {
-        return sha256(p)
-    }
-
-    fn user_json(self, id: Str, email: Str, name: Str) -> Str {
-        let h = Http {}
-        return `{"id":"` + h.json_escape(id) + `","email":"` + h.json_escape(email) + `","name":"` + h.json_escape(name) + `"}`
-    }
-
-    fn contact_json(self, id: Str, name: Str, email: Str, phone: Str, company_id: Str, notes: Str) -> Str {
-        let h = Http {}
-        return `{"id":"` + h.json_escape(id) + `","name":"` + h.json_escape(name) + `","email":"` + h.json_escape(email) + `","phone":"` + h.json_escape(phone) + `","company_id":"` + h.json_escape(company_id) + `","notes":"` + h.json_escape(notes) + `"}`
-    }
-
-    fn company_json(self, id: Str, name: Str, industry: Str, website: Str, notes: Str) -> Str {
-        let h = Http {}
-        return `{"id":"` + h.json_escape(id) + `","name":"` + h.json_escape(name) + `","industry":"` + h.json_escape(industry) + `","website":"` + h.json_escape(website) + `","notes":"` + h.json_escape(notes) + `"}`
-    }
-
-    fn deal_json(self, id: Str, title: Str, contact_id: Str, company_id: Str, amount: Float, stage: Str, created_at: Int) -> Str {
-        let h = Http {}
-        return `{"id":"` + h.json_escape(id) + `","title":"` + h.json_escape(title) + `","contact_id":"` + h.json_escape(contact_id) + `","company_id":"` + h.json_escape(company_id) + `","amount":` + str(amount) + `,"stage":"` + h.json_escape(stage) + `","created_at":` + str(created_at) + `}`
-    }
-
-    fn activity_json(self, id: Str, entity_type: Str, entity_id: Str, kind: Str, body: Str, created_at: Int) -> Str {
-        let h = Http {}
-        return `{"id":"` + h.json_escape(id) + `","entity_type":"` + h.json_escape(entity_type) + `","entity_id":"` + h.json_escape(entity_id) + `","kind":"` + h.json_escape(kind) + `","body":"` + h.json_escape(body) + `","created_at":` + str(created_at) + `}`
-    }
-
-    fn task_json(self, id: Str, title: Str, description: Str, due_at: Int, status: Str, priority: Str, contact_id: Str, deal_id: Str, created_at: Int) -> Str {
-        let h = Http {}
-        return `{"id":"` + h.json_escape(id) + `","title":"` + h.json_escape(title) + `","description":"` + h.json_escape(description) + `","due_at":` + str(due_at) + `,"status":"` + h.json_escape(status) + `","priority":"` + h.json_escape(priority) + `","contact_id":"` + h.json_escape(contact_id) + `","deal_id":"` + h.json_escape(deal_id) + `","created_at":` + str(created_at) + `}`
-    }
-
-    fn tag_json(self, id: Str, name: Str) -> Str {
-        let h = Http {}
-        return `{"id":"` + h.json_escape(id) + `","name":"` + h.json_escape(name) + `"}`
-    }
-
-    fn attachment_json(self, id: Str, entity_type: Str, entity_id: Str, filename: Str, url: Str, created_at: Int) -> Str {
-        let h = Http {}
-        return `{"id":"` + h.json_escape(id) + `","entity_type":"` + h.json_escape(entity_type) + `","entity_id":"` + h.json_escape(entity_id) + `","filename":"` + h.json_escape(filename) + `","url":"` + h.json_escape(url) + `","created_at":` + str(created_at) + `}`
-    }
-
-    fn audit_json(self, id: Str, action: Str, entity_type: Str, entity_id: Str, details: Str, created_at: Int) -> Str {
-        let h = Http {}
-        return `{"id":"` + h.json_escape(id) + `","action":"` + h.json_escape(action) + `","entity_type":"` + h.json_escape(entity_type) + `","entity_id":"` + h.json_escape(entity_id) + `","details":"` + h.json_escape(details) + `","created_at":` + str(created_at) + `}`
-    }
-
     fn main(self) -> Int {
         let db = crm_db_open("crm.db")
         if db == null {
@@ -139,14 +20,23 @@ self.exec(db, "CREATE TABLE IF NOT EXISTS audit_log (id TEXT PRIMARY KEY, owner 
 self.exec(db, "CREATE TABLE IF NOT EXISTS attachments (id TEXT PRIMARY KEY, owner TEXT, entity_type TEXT, entity_id TEXT, filename TEXT, url TEXT, created_at INTEGER)")
 
 let mut rate_counts: Map[Str, Int] = {}
+let mut metrics_map: Map[Str, Int] = {}
+
+        let os = Os {}
+        let mut jwt_secret = os.env("JWT_SECRET")
+        if jwt_secret == "" { jwt_secret = "dev-secret-change-me" }
 
         let handler = |req: Request| -> Response {
             let h = Http {}
             let jp = JsonParser {}
             let app = App {}
+            let auth = Auth {}
 
             // request log
-            println(req.method + " " + req.path)
+            metrics_map.insert("requests", metrics_map.get_or("requests", 0) + 1)
+            let log = Log {}
+            log.set_json(true)
+            log.info(req.method + " " + req.path)
 
             // rate limiting (per token/ip-ish)
             let mut rl_key = req.headers.get_or("Authorization", "anon")
@@ -188,8 +78,8 @@ let mut rate_counts: Map[Str, Int] = {}
                         let id = app.new_id("u")
                         let ph = app.hash_password(password)
                         app.exec(db, "INSERT INTO users (email,id,name,password_hash,reset_token,reset_expires) VALUES ('" + app.sql_escape(email) + "','" + app.sql_escape(id) + "','" + app.sql_escape(name) + "','" + app.sql_escape(ph) + "','',0)")
-                        let token = app.new_token()
-                        app.exec(db, "INSERT INTO sessions (token,email) VALUES ('" + app.sql_escape(token) + "','" + app.sql_escape(email) + "')")
+                        let auth = Auth {}
+                        let token = auth.jwt_sign(`{"email":"` + app.sql_escape(email) + `","name":"` + app.sql_escape(name) + `"}`, jwt_secret)
                         let body = `{"token":"` + token + `","user":` + app.user_json(id, email, name) + `}`
                         return app.cors(h, h.respond_json(body))
                     }
@@ -213,11 +103,11 @@ let mut rate_counts: Map[Str, Int] = {}
                         let uname = crm_column_text(stmt, 1)
                         let phash = crm_column_text(stmt, 2)
                         crm_finalize(stmt)
-                        if phash != app.hash_password(password) {
+                        let auth = Auth {}
+                        if !auth.const_time_eq(phash, app.hash_password(password)) {
                             return app.cors(h, h.respond_json(`{"error":"invalid credentials"}`))
                         }
-                        let token = app.new_token()
-                        app.exec(db, "INSERT INTO sessions (token,email) VALUES ('" + app.sql_escape(token) + "','" + app.sql_escape(email) + "')")
+                        let token = auth.jwt_sign(`{"email":"` + app.sql_escape(email) + `","name":"` + app.sql_escape(uname) + `"}`, jwt_secret)
                         let body = `{"token":"` + token + `","user":` + app.user_json(uid, email, uname) + `}`
                         return app.cors(h, h.respond_json(body))
                     }
@@ -272,7 +162,7 @@ let mut rate_counts: Map[Str, Int] = {}
                 }
             }
 
-            // resolve session
+            // resolve session via JWT
             let mut token = ""
             if req.headers.contains("Authorization") {
                 let authh = req.headers["Authorization"]
@@ -281,12 +171,18 @@ let mut rate_counts: Map[Str, Int] = {}
                 }
             }
             let mut cur_email = ""
+            let mut cur_name = ""
             if token != "" {
-                let sstmt = crm_prepare(db, "SELECT email FROM sessions WHERE token='" + app.sql_escape(token) + "'")
-                if crm_step(sstmt) == 100 {
-                    cur_email = crm_column_text(sstmt, 0)
+                let payload = auth.jwt_verify(token, jwt_secret)
+                if payload != "" {
+                    match jp.parse(payload) {
+                        ok(pobj) => {
+                            cur_email = app.field_str(jp, pobj, "email")
+                            cur_name = app.field_str(jp, pobj, "name")
+                        }
+                        err(e) => { cur_email = "" }
+                    }
                 }
-                crm_finalize(sstmt)
             }
 
             // auth me

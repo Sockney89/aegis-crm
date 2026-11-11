@@ -1,7 +1,7 @@
 <template>
   <div>
     <h2 class="text-xl font-semibold text-slate-800 mb-6">Dashboard</h2>
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
       <div class="card">
         <div class="text-sm text-slate-500">Contacts</div>
         <div class="text-3xl font-bold text-slate-800 mt-1">{{ stats.contacts }}</div>
@@ -13,6 +13,11 @@
       <div class="card">
         <div class="text-sm text-slate-500">Deals</div>
         <div class="text-3xl font-bold text-slate-800 mt-1">{{ stats.deals }}</div>
+      </div>
+      <div class="card">
+        <div class="text-sm text-slate-500">Pipeline value</div>
+        <div class="text-3xl font-bold text-slate-800 mt-1">{{ stats.pipeline_value }}</div>
+        <div class="text-xs text-slate-500 mt-1">Open tasks: {{ stats.open_tasks }}</div>
       </div>
     </div>
     <div class="card">
@@ -30,7 +35,7 @@
 import { ref, onMounted } from 'vue'
 import api from '../api'
 
-const stats = ref({ contacts: 0, companies: 0, deals: 0 })
+const stats = ref({ contacts: 0, companies: 0, deals: 0, pipeline_value: 0, open_tasks: 0 })
 
 onMounted(async () => {
   try {

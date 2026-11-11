@@ -15,6 +15,9 @@ const routes = [
       { path: 'contacts', component: () => import('../views/Contacts.vue') },
       { path: 'companies', component: () => import('../views/Companies.vue') },
       { path: 'deals', component: () => import('../views/Deals.vue') },
+      { path: 'tasks', component: () => import('../views/Tasks.vue') },
+      { path: 'tags', component: () => import('../views/Tags.vue') },
+      { path: 'audit', component: () => import('../views/Audit.vue') },
     ],
   },
 ]

@@ -1,0 +1,24 @@
+extern "C" fn crm_db_open(path: Str) -> Handle[Db]
+extern "C" fn crm_db_close(db: Handle[Db]) -> Empty
+extern "C" fn crm_exec(db: Handle[Db], sql: Str) -> Int
+extern "C" fn crm_errmsg(db: Handle[Db]) -> Str
+extern "C" fn crm_prepare(db: Handle[Db], sql: Str) -> Handle[Stmt]
+extern "C" fn crm_step(stmt: Handle[Stmt]) -> Int
+extern "C" fn crm_finalize(stmt: Handle[Stmt]) -> Int
+extern "C" fn crm_column_count(stmt: Handle[Stmt]) -> Int
+extern "C" fn crm_column_text(stmt: Handle[Stmt], i: Int) -> Str
+extern "C" fn crm_column_int(stmt: Handle[Stmt], i: Int) -> Int
+extern "C" fn crm_column_double(stmt: Handle[Stmt], i: Int) -> Float
+extern "C" fn crm_bind_text(stmt: Handle[Stmt], index: Int, value: Str) -> Int
+extern "C" fn crm_bind_int(stmt: Handle[Stmt], index: Int, value: Int) -> Int
+extern "C" fn crm_bind_double(stmt: Handle[Stmt], index: Int, value: Float) -> Int
+extern "C" fn crm_reset(stmt: Handle[Stmt]) -> Empty
+
+impl App {
+    fn exec(self, db: Handle[Db], sql: Str) -> Empty {
+        let rc = crm_exec(db, sql)
+        if rc != 0 {
+            println("SQL err: " + crm_errmsg(db))
+        }
+    }
+}

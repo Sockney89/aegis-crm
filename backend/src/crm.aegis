@@ -1,0 +1,50 @@
+enum Stage { Lead, Qualified, Won, Lost }
+enum TaskStatus { Open, Done, Cancelled }
+enum Priority { Low, Medium, High }
+
+impl App {
+    fn user_json(self, id: Str, email: Str, name: Str) -> Str {
+        let h = Http {}
+        return `{"id":"` + h.json_escape(id) + `","email":"` + h.json_escape(email) + `","name":"` + h.json_escape(name) + `"}`
+    }
+
+    fn contact_json(self, id: Str, name: Str, email: Str, phone: Str, company_id: Str, notes: Str) -> Str {
+        let h = Http {}
+        return `{"id":"` + h.json_escape(id) + `","name":"` + h.json_escape(name) + `","email":"` + h.json_escape(email) + `","phone":"` + h.json_escape(phone) + `","company_id":"` + h.json_escape(company_id) + `","notes":"` + h.json_escape(notes) + `"}`
+    }
+
+    fn company_json(self, id: Str, name: Str, industry: Str, website: Str, notes: Str) -> Str {
+        let h = Http {}
+        return `{"id":"` + h.json_escape(id) + `","name":"` + h.json_escape(name) + `","industry":"` + h.json_escape(industry) + `","website":"` + h.json_escape(website) + `","notes":"` + h.json_escape(notes) + `"}`
+    }
+
+    fn deal_json(self, id: Str, title: Str, contact_id: Str, company_id: Str, amount: Float, stage: Str, created_at: Int) -> Str {
+        let h = Http {}
+        return `{"id":"` + h.json_escape(id) + `","title":"` + h.json_escape(title) + `","contact_id":"` + h.json_escape(contact_id) + `","company_id":"` + h.json_escape(company_id) + `","amount":` + str(amount) + `,"stage":"` + h.json_escape(stage) + `","created_at":` + str(created_at) + `}`
+    }
+
+    fn activity_json(self, id: Str, entity_type: Str, entity_id: Str, kind: Str, body: Str, created_at: Int) -> Str {
+        let h = Http {}
+        return `{"id":"` + h.json_escape(id) + `","entity_type":"` + h.json_escape(entity_type) + `","entity_id":"` + h.json_escape(entity_id) + `","kind":"` + h.json_escape(kind) + `","body":"` + h.json_escape(body) + `","created_at":` + str(created_at) + `}`
+    }
+
+    fn task_json(self, id: Str, title: Str, description: Str, due_at: Int, status: Str, priority: Str, contact_id: Str, deal_id: Str, created_at: Int) -> Str {
+        let h = Http {}
+        return `{"id":"` + h.json_escape(id) + `","title":"` + h.json_escape(title) + `","description":"` + h.json_escape(description) + `","due_at":` + str(due_at) + `,"status":"` + h.json_escape(status) + `","priority":"` + h.json_escape(priority) + `","contact_id":"` + h.json_escape(contact_id) + `","deal_id":"` + h.json_escape(deal_id) + `","created_at":` + str(created_at) + `}`
+    }
+
+    fn tag_json(self, id: Str, name: Str) -> Str {
+        let h = Http {}
+        return `{"id":"` + h.json_escape(id) + `","name":"` + h.json_escape(name) + `"}`
+    }
+
+    fn attachment_json(self, id: Str, entity_type: Str, entity_id: Str, filename: Str, url: Str, created_at: Int) -> Str {
+        let h = Http {}
+        return `{"id":"` + h.json_escape(id) + `","entity_type":"` + h.json_escape(entity_type) + `","entity_id":"` + h.json_escape(entity_id) + `","filename":"` + h.json_escape(filename) + `","url":"` + h.json_escape(url) + `","created_at":` + str(created_at) + `}`
+    }
+
+    fn audit_json(self, id: Str, action: Str, entity_type: Str, entity_id: Str, details: Str, created_at: Int) -> Str {
+        let h = Http {}
+        return `{"id":"` + h.json_escape(id) + `","action":"` + h.json_escape(action) + `","entity_type":"` + h.json_escape(entity_type) + `","entity_id":"` + h.json_escape(entity_id) + `","details":"` + h.json_escape(details) + `","created_at":` + str(created_at) + `}`
+    }
+}

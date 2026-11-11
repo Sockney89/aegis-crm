@@ -1,0 +1,50 @@
+impl App {
+    fn cors(self, h: Http, r: Response) -> Response {
+        let r1 = h.with_header(r, "Access-Control-Allow-Origin", "*")
+        let r2 = h.with_header(r1, "Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
+        let r3 = h.with_header(r2, "Access-Control-Allow-Headers", "Content-Type,Authorization")
+        return r3
+    }
+
+    fn field_str(self, jp: JsonParser, obj: Json, key: Str) -> Str {
+        match jp.get(obj, key) {
+            some(v) => {
+                match jp.as_str(v) {
+                    some(s) => { return s }
+                    none => { return "" }
+                }
+            }
+            none => { return "" }
+        }
+        return ""
+    }
+
+    fn field_float(self, jp: JsonParser, obj: Json, key: Str) -> Float {
+        match jp.get(obj, key) {
+            some(v) => {
+                match jp.as_float(v) {
+                    some(f) => { return f }
+                    none => { return 0.0 }
+                }
+            }
+            none => { return 0.0 }
+        }
+        return 0.0
+    }
+
+    fn sql_escape(self, s: Str) -> Str {
+        return s.replace("'", "''")
+    }
+
+    fn new_id(self, prefix: Str) -> Str {
+        return prefix + "_" + str(now_ms()) + "_" + str(rand_int(1000, 9999))
+    }
+
+    fn new_token(self) -> Str {
+        return "tok_" + str(now_ms()) + "_" + str(rand_int(100000, 999999))
+    }
+
+    fn hash_password(self, p: Str) -> Str {
+        return sha256(p)
+    }
+}
