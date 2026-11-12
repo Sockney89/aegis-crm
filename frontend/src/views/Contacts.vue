@@ -48,6 +48,9 @@
 import { ref, onMounted } from 'vue'
 import api from '../api'
 import Modal from '../components/Modal.vue'
+import { useToastStore } from '../stores/toast'
+
+const toast = useToastStore()
 
 const contacts = ref([])
 const modalOpen = ref(false)
@@ -70,6 +73,7 @@ async function create() {
   try {
     await api.post('/contacts', form.value)
     modalOpen.value = false
+    toast.success('Contact created')
     await load()
   } finally {
     saving.value = false
@@ -79,6 +83,7 @@ async function create() {
 async function remove(id) {
   if (!confirm('Delete this contact?')) return
   await api.delete(`/contacts/${id}`)
+  toast.success('Contact deleted')
   await load()
 }
 </script>

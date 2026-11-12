@@ -24,9 +24,17 @@ const routes = [
 
 const router = createRouter({ history: createWebHistory(), routes })
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   const auth = useAuthStore()
-  if (to.meta.auth && !auth.isAuthenticated) return '/login'
+  if (to.meta.auth) {
+    if (!auth.token) return '/login'
+    try {
+      await auth.me()
+    } catch (e) {
+      auth.logout()
+      return '/login'
+    }
+  }
   if (to.meta.guest && auth.isAuthenticated) return '/'
 })
 

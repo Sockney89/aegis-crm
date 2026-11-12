@@ -27,6 +27,9 @@
 import { ref, onMounted } from 'vue'
 import api from '../api'
 import Modal from '../components/Modal.vue'
+import { useToastStore } from '../stores/toast'
+
+const toast = useToastStore()
 
 const tags = ref([])
 const modalOpen = ref(false)
@@ -49,6 +52,7 @@ async function create() {
   try {
     await api.post('/tags', form.value)
     modalOpen.value = false
+    toast.success('Tag created')
     await load()
   } finally {
     saving.value = false
@@ -58,6 +62,7 @@ async function create() {
 async function remove(id) {
   if (!confirm('Delete this tag?')) return
   await api.delete(`/tags/${id}`)
+  toast.success('Tag deleted')
   await load()
 }
 </script>

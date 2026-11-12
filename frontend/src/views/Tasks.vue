@@ -47,6 +47,9 @@
 import { ref, onMounted } from 'vue'
 import api from '../api'
 import Modal from '../components/Modal.vue'
+import { useToastStore } from '../stores/toast'
+
+const toast = useToastStore()
 
 const tasks = ref([])
 const modalOpen = ref(false)
@@ -69,6 +72,7 @@ async function create() {
   try {
     await api.post('/tasks', form.value)
     modalOpen.value = false
+    toast.success('Task created')
     await load()
   } finally {
     saving.value = false
@@ -78,6 +82,7 @@ async function create() {
 async function remove(id) {
   if (!confirm('Delete this task?')) return
   await api.delete(`/tasks/${id}`)
+  toast.success('Task deleted')
   await load()
 }
 </script>

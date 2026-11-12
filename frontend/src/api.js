@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { useToastStore } from './stores/toast'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://127.0.0.1:8080',
@@ -13,7 +14,9 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (res) => {
     if (typeof res.data === 'string' && res.data.includes('<!DOCTYPE')) {
-      return Promise.reject(new Error('Backend not reachable on ' + (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8080')))
+      const toast = useToastStore()
+      toast.error('Backend not reachable')
+      return Promise.reject(new Error('Backend not reachable'))
     }
     return res
   },
@@ -23,6 +26,9 @@ api.interceptors.response.use(
       localStorage.removeItem('user')
       window.location.href = '/login'
     }
+    const toast = useToastStore()
+    const msg = err?.response?.data?.error || err?.message || 'Request failed'
+    toast.error(msg)
     return Promise.reject(err)
   }
 )
