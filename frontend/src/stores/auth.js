@@ -2,10 +2,19 @@ import { defineStore } from 'pinia'
 import api from '../api'
 
 export const useAuthStore = defineStore('auth', {
-  state: () => ({
-    token: localStorage.getItem('token') || '',
-    user: JSON.parse(localStorage.getItem('user') || 'null'),
-  }),
+  state: () => {
+    let user = null
+    try {
+      const raw = localStorage.getItem('user')
+      if (raw && raw !== 'undefined' && raw !== 'null') user = JSON.parse(raw)
+    } catch (e) {
+      user = null
+    }
+    return {
+      token: localStorage.getItem('token') || '',
+      user,
+    }
+  },
   getters: {
     isAuthenticated: (s) => !!s.token,
   },
@@ -15,7 +24,7 @@ export const useAuthStore = defineStore('auth', {
       this.token = data.token
       this.user = data.user
       localStorage.setItem('token', data.token)
-      localStorage.setItem('user', JSON.stringify(data.user))
+      if (data.user) localStorage.setItem('user', JSON.stringify(data.user))
       return data
     },
     async login(email, password) {
@@ -23,7 +32,7 @@ export const useAuthStore = defineStore('auth', {
       this.token = data.token
       this.user = data.user
       localStorage.setItem('token', data.token)
-      localStorage.setItem('user', JSON.stringify(data.user))
+      if (data.user) localStorage.setItem('user', JSON.stringify(data.user))
       return data
     },
     async forgot(email) {
@@ -37,7 +46,7 @@ export const useAuthStore = defineStore('auth', {
     async me() {
       const { data } = await api.get('/auth/me')
       this.user = data.user
-      localStorage.setItem('user', JSON.stringify(data.user))
+      if (data.user) localStorage.setItem('user', JSON.stringify(data.user))
       return data
     },
     logout() {
