@@ -39,7 +39,7 @@ npm run dev:backend
 # or: backend/build/crm.exe
 ```
 
-The API listens on `http://127.0.0.1:8080`. Data is stored in `crm.db` (SQLite) in the working directory.
+The API listens on `http://127.0.0.1:8080` (override with `CRM_PORT`). Data is stored in `crm.db` (SQLite) in the working directory. Ensure the backend is running before the frontend; the frontend points at `http://127.0.0.1:8080` (override with `VITE_API_URL`).
 
 ## Frontend
 
@@ -65,4 +65,3 @@ The frontend expects the backend at `http://127.0.0.1:8080` (override with `VITE
 - `GET /stats`, `GET /health`
 
 All protected routes require `Authorization: Bearer <token>`.
-EOF

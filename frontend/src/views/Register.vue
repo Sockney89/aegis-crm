@@ -46,7 +46,7 @@ async function submit() {
     await auth.register(email.value, password.value, name.value)
     router.push('/')
   } catch (e) {
-    error.value = e.response?.data?.error || 'Registration failed'
+    error.value = e?.response?.data?.error || e?.message || 'Registration failed'
   } finally {
     loading.value = false
   }

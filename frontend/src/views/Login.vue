@@ -42,7 +42,7 @@ async function submit() {
     await auth.login(email.value, password.value)
     router.push('/')
   } catch (e) {
-    error.value = e.response?.data?.error || 'Login failed'
+    error.value = e?.response?.data?.error || e?.message || 'Login failed'
   } finally {
     loading.value = false
   }

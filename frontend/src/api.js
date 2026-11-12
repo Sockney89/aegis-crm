@@ -11,7 +11,12 @@ api.interceptors.request.use((config) => {
 })
 
 api.interceptors.response.use(
-  (res) => res,
+  (res) => {
+    if (typeof res.data === 'string' && res.data.includes('<!DOCTYPE')) {
+      return Promise.reject(new Error('Backend not reachable on ' + (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8080')))
+    }
+    return res
+  },
   (err) => {
     if (err.response && err.response.status === 401) {
       localStorage.removeItem('token')

@@ -904,8 +904,18 @@ let mut metrics_map: Map[Str, Int] = {}
             return app.cors(h, h.respond_404())
         }
 
-        let http = Http {}
-        let rc = http.serve(8080, handler)
+let os2 = Os {}
+let port_str = os2.env("CRM_PORT")
+let mut port = 8080
+if port_str != "" {
+    match port_str.to_int() {
+        ok(v) => { port = v }
+        err(e) => { println("bad CRM_PORT: " + e) }
+    }
+}
+println("listening on " + str(port))
+let http = Http {}
+let rc = http.serve(port, handler)
         crm_db_close(db)
         return rc
     }
