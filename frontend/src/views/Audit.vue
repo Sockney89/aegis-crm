@@ -39,5 +39,5 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.card { @apply bg-white rounded-xl border border-slate-200 p-4; }
+.card { @apply bg-white rounded-[1.35rem] border border-[#dfe3dc] p-5 shadow-[0_12px_35px_rgba(31,55,49,.05)]; }
 </style>

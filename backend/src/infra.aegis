@@ -1,4 +1,9 @@
 impl App {
+    fn jwt_token(self, email: Str, name: Str, secret: Str) -> Str {
+        let auth = Auth {}
+        return auth.jwt_sign(`{"email":"` + self.sql_escape(email) + `","name":"` + self.sql_escape(name) + `"}`, secret)
+    }
+
     fn cors(self, h: Http, r: Response) -> Response {
         let r1 = h.with_header(r, "Access-Control-Allow-Origin", "*")
         let r2 = h.with_header(r1, "Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")

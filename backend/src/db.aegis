@@ -15,6 +15,22 @@ extern "C" fn crm_bind_double(stmt: Handle[Stmt], index: Int, value: Float) -> I
 extern "C" fn crm_reset(stmt: Handle[Stmt]) -> Empty
 
 impl App {
+    fn init_schema(self, db: Handle[Db]) -> Empty {
+        self.exec(db, "CREATE TABLE IF NOT EXISTS users (email TEXT PRIMARY KEY, id TEXT, name TEXT, password_hash TEXT, reset_token TEXT, reset_expires INTEGER)")
+        self.exec(db, "CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, email TEXT)")
+        self.exec(db, "CREATE TABLE IF NOT EXISTS contacts (id TEXT PRIMARY KEY, owner TEXT, name TEXT, email TEXT, phone TEXT, company_id TEXT, notes TEXT)")
+        self.exec(db, "CREATE TABLE IF NOT EXISTS companies (id TEXT PRIMARY KEY, owner TEXT, name TEXT, industry TEXT, website TEXT, notes TEXT)")
+        self.exec(db, "CREATE TABLE IF NOT EXISTS deals (id TEXT PRIMARY KEY, owner TEXT, contact_id TEXT, company_id TEXT, title TEXT, amount REAL, stage TEXT, created_at INTEGER)")
+        self.exec(db, "CREATE TABLE IF NOT EXISTS activities (id TEXT PRIMARY KEY, owner TEXT, entity_type TEXT, entity_id TEXT, kind TEXT, body TEXT, created_at INTEGER)")
+        self.exec(db, "CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, owner TEXT, title TEXT, description TEXT, due_at INTEGER, status TEXT, priority TEXT, contact_id TEXT, deal_id TEXT, created_at INTEGER)")
+        self.exec(db, "CREATE TABLE IF NOT EXISTS deal_stages (id TEXT PRIMARY KEY, deal_id TEXT, stage TEXT, changed_at INTEGER)")
+        self.exec(db, "CREATE TABLE IF NOT EXISTS tags (id TEXT PRIMARY KEY, owner TEXT, name TEXT)")
+        self.exec(db, "CREATE TABLE IF NOT EXISTS entity_tags (entity_type TEXT, entity_id TEXT, tag_id TEXT)")
+        self.exec(db, "CREATE TABLE IF NOT EXISTS audit_log (id TEXT PRIMARY KEY, owner TEXT, action TEXT, entity_type TEXT, entity_id TEXT, details TEXT, created_at INTEGER)")
+        self.exec(db, "CREATE TABLE IF NOT EXISTS attachments (id TEXT PRIMARY KEY, owner TEXT, entity_type TEXT, entity_id TEXT, filename TEXT, url TEXT, created_at INTEGER)")
+        self.exec(db, "CREATE TABLE IF NOT EXISTS workflow_runs (id TEXT PRIMARY KEY, owner TEXT, trigger TEXT, entity_id TEXT, service TEXT, status TEXT, payload TEXT, created_at INTEGER)")
+    }
+
     fn exec(self, db: Handle[Db], sql: Str) -> Empty {
         let rc = crm_exec(db, sql)
         if rc != 0 {

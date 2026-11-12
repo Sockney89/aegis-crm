@@ -1,8 +1,8 @@
 # Aegis CRM
 
-A showcase project for the [Aegis](https://github.com/Sockney89/aegis-dist) programming language. Aegis CRM is a small full-stack CRM application: an Aegis HTTP backend with SQLite persistence and a Vue 3 frontend, organized as a monorepo.
+A friendly CRM playground built with [Aegis](https://github.com/Sockney89/aegis-dist), SQLite, and Vue. Keep track of people, companies, deals, tasks, tags, and the small follow-ups that usually get lost between meetings.
 
-Aegis is a deliberately tiny, systems-oriented language (stack-by-default memory, errors as values, design-by-contract, actor-style events). This project demonstrates using Aegis's standard library (HTTP, JSON, auth helpers, hashing) plus its C FFI to build a real API server.
+The project is also a hands-on tour of Aegis: typed deal lifecycles, contracts, JWT authentication, JSON/HTTP APIs, structured logging, SQLite through the C FFI, and mock workflow integrations. The mock email and webhook services are intentionally local, so the app is easy to run and explore without setting up third-party accounts.
 
 ## Repository layout
 
@@ -28,7 +28,9 @@ npm run build:backend
 Or directly:
 
 ```sh
-aegis backend/src/main.aegis backend/src/sqlite_helper.c backend/vendor/sqlite3.c \
+aegis backend/src/app.aegis backend/src/infra.aegis backend/src/db.aegis \
+  backend/src/crm.aegis backend/src/workflow.aegis backend/src/main.aegis \
+  backend/src/sqlite_helper.c backend/vendor/sqlite3.c \
   --main App::main --emit-exe backend/build/crm.exe
 ```
 
@@ -39,7 +41,7 @@ npm run dev:backend
 # or: backend/build/crm.exe
 ```
 
-The API listens on `http://127.0.0.1:8080` (override with `CRM_PORT`). Data is stored in `crm.db` (SQLite) in the working directory. Ensure the backend is running before the frontend; the frontend points at `http://127.0.0.1:8080` (override with `VITE_API_URL`).
+The API listens on `http://127.0.0.1:8080` by default. Set `CRM_PORT` if that port is already in use. SQLite stores data in `crm.db` in the process working directory.
 
 ## Frontend
 
@@ -48,7 +50,7 @@ npm run build:frontend   # build
 npm --workspace frontend run dev   # dev server on http://localhost:5173
 ```
 
-The frontend expects the backend at `http://127.0.0.1:8080` (override with `VITE_API_URL`).
+The frontend expects the backend at `http://127.0.0.1:8080`. Set `VITE_API_URL` when using another port.
 
 ## API overview
 
@@ -65,12 +67,14 @@ The frontend expects the backend at `http://127.0.0.1:8080` (override with `VITE
 - Export: `GET /export/contacts`
 - `GET /stats`, `GET /health`
 
-All protected routes require `Authorization: Bearer <token>`.
+Protected routes require `Authorization: Bearer <token>`. For a local setup, start the backend first and then start the frontend. If the browser has an old login token, sign in again after changing the backend build.
 
-## Aegis showcase features
+## What to explore
 
 - Deal lifecycle state machine: `lead -> qualified -> proposal -> won/lost`
 - Invalid deal transitions are rejected by the backend
 - Deal creation and stage changes trigger mock email and webhook deliveries
 - Mock delivery runs are persisted and visible at `/workflows`
 - The frontend exposes a one-click deal transition control and workflow ledger
+
+This is a deliberately small project, so the code is meant to be read and changed. Try adding a new deal transition, a workflow rule, or a new CRM entity and use the existing modules as a starting point.

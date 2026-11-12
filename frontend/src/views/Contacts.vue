@@ -103,7 +103,7 @@ async function remove(id) {
 </script>
 
 <style scoped>
-.card { @apply bg-white rounded-xl border border-slate-200 p-4; }
-.input { @apply w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500; }
-.btn-primary { @apply px-4 py-2 bg-brand-600 text-white rounded-lg font-medium hover:bg-brand-700; }
+.card { @apply bg-white rounded-[1.35rem] border border-[#dfe3dc] p-5 shadow-[0_12px_35px_rgba(31,55,49,.05)]; }
+.input { @apply w-full px-3 py-2.5 border border-[#d9ddd5] rounded-xl bg-[#fbfbf8] focus:outline-none focus:ring-2 focus:ring-brand-500; }
+.btn-primary { @apply px-4 py-2.5 bg-[#123d3a] text-white rounded-xl font-semibold hover:bg-[#087f70]; }
 </style>
