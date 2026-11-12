@@ -2,9 +2,17 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
+import { useAuthStore } from './stores/auth'
 import './style.css'
 
 const app = createApp(App)
-app.use(createPinia())
+const pinia = createPinia()
+app.use(pinia)
 app.use(router)
+
+const auth = useAuthStore(pinia)
+if (auth.token) {
+  auth.me().catch(() => auth.logout())
+}
+
 app.mount('#app')
