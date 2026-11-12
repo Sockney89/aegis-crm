@@ -21,7 +21,8 @@
             <td class="py-3 px-2 text-slate-600">{{ t.status }}</td>
             <td class="py-3 px-2 text-slate-600">{{ t.priority }}</td>
             <td class="py-3 px-2 text-slate-600">{{ t.due_at }}</td>
-            <td class="py-3 px-2 text-right">
+            <td class="py-3 px-2 text-right space-x-2">
+              <button @click="openEdit(t)" class="text-brand-600 hover:text-brand-700 text-xs">Edit</button>
               <button @click="remove(t.id)" class="text-red-600 hover:text-red-700 text-xs">Delete</button>
             </td>
           </tr>
@@ -32,7 +33,7 @@
       </table>
     </div>
 
-    <Modal :open="modalOpen" title="New task" @close="modalOpen = false">
+    <Modal :open="modalOpen" :title="editingId ? 'Edit task' : 'New task'" @close="modalOpen = false">
       <form @submit.prevent="create" class="space-y-3">
         <input v-model="form.title" placeholder="Title" class="input" />
         <input v-model="form.description" placeholder="Description" class="input" />
@@ -54,6 +55,7 @@ const toast = useToastStore()
 const tasks = ref([])
 const modalOpen = ref(false)
 const saving = ref(false)
+const editingId = ref(null)
 const form = ref({ title: '', description: '', priority: 'medium' })
 
 async function load() {
@@ -63,16 +65,28 @@ async function load() {
 onMounted(load)
 
 function openCreate() {
+  editingId.value = null
   form.value = { title: '', description: '', priority: 'medium' }
+  modalOpen.value = true
+}
+
+function openEdit(t) {
+  editingId.value = t.id
+  form.value = { title: t.title || '', description: t.description || '', priority: t.priority || 'medium' }
   modalOpen.value = true
 }
 
 async function create() {
   saving.value = true
   try {
-    await api.post('/tasks', form.value)
+    if (editingId.value) {
+      await api.put(`/tasks/${editingId.value}`, form.value)
+      toast.success('Task updated')
+    } else {
+      await api.post('/tasks', form.value)
+      toast.success('Task created')
+    }
     modalOpen.value = false
-    toast.success('Task created')
     await load()
   } finally {
     saving.value = false

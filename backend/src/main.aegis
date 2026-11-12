@@ -361,6 +361,37 @@ let mut metrics_map: Map[Str, Int] = {}
                 return app.cors(h, h.respond_404())
             }
 
+// --- company update ---
+            if req.path.index_of("/companies/") == 0 && req.method == "PUT" {
+                let id = req.path.substring(11, req.path.length())
+                let fstmt = crm_prepare(db, "SELECT name,industry,website,notes FROM companies WHERE id='" + app.sql_escape(id) + "' AND owner='" + app.sql_escape(cur_email) + "'")
+                if crm_step(fstmt) != 100 {
+                    crm_finalize(fstmt)
+                    return app.cors(h, h.respond_404())
+                }
+                let mut cname = crm_column_text(fstmt, 0)
+                let mut cindustry = crm_column_text(fstmt, 1)
+                let mut cwebsite = crm_column_text(fstmt, 2)
+                let mut cnotes = crm_column_text(fstmt, 3)
+                crm_finalize(fstmt)
+                match jp.parse(req.body) {
+                    ok(obj) => {
+                        let n = app.field_str(jp, obj, "name")
+                        if n != "" { cname = n }
+                        let ind = app.field_str(jp, obj, "industry")
+                        if ind != "" { cindustry = ind }
+                        let web = app.field_str(jp, obj, "website")
+                        if web != "" { cwebsite = web }
+                        let nt = app.field_str(jp, obj, "notes")
+                        if nt != "" { cnotes = nt }
+                        app.exec(db, "UPDATE companies SET name='" + app.sql_escape(cname) + "', industry='" + app.sql_escape(cindustry) + "', website='" + app.sql_escape(cwebsite) + "', notes='" + app.sql_escape(cnotes) + "' WHERE id='" + app.sql_escape(id) + "' AND owner='" + app.sql_escape(cur_email) + "'")
+                        let body = `{"company":` + app.company_json(id, cname, cindustry, cwebsite, cnotes) + `}`
+                        return app.cors(h, h.respond_json(body))
+                    }
+                    err(e) => { return app.cors(h, h.respond_400()) }
+                }
+            }
+
             // --- company delete ---
             if req.path.index_of("/companies/") == 0 && req.method == "DELETE" {
                 let id = req.path.substring(11, req.path.length())
@@ -653,6 +684,28 @@ let mut metrics_map: Map[Str, Int] = {}
                         let name = app.field_str(jp, obj, "name")
                         app.exec(db, "INSERT INTO tags (id,owner,name) VALUES ('" + app.sql_escape(id) + "','" + app.sql_escape(cur_email) + "','" + app.sql_escape(name) + "')")
                         let body = `{"tag":` + app.tag_json(id, name) + `}`
+                        return app.cors(h, h.respond_json(body))
+                    }
+                    err(e) => { return app.cors(h, h.respond_400()) }
+                }
+            }
+
+// --- tag update ---
+            if req.path.index_of("/tags/") == 0 && req.method == "PUT" {
+                let id = req.path.substring(6, req.path.length())
+                let fstmt = crm_prepare(db, "SELECT name FROM tags WHERE id='" + app.sql_escape(id) + "' AND owner='" + app.sql_escape(cur_email) + "'")
+                if crm_step(fstmt) != 100 {
+                    crm_finalize(fstmt)
+                    return app.cors(h, h.respond_404())
+                }
+                let mut tname = crm_column_text(fstmt, 0)
+                crm_finalize(fstmt)
+                match jp.parse(req.body) {
+                    ok(obj) => {
+                        let n = app.field_str(jp, obj, "name")
+                        if n != "" { tname = n }
+                        app.exec(db, "UPDATE tags SET name='" + app.sql_escape(tname) + "' WHERE id='" + app.sql_escape(id) + "' AND owner='" + app.sql_escape(cur_email) + "'")
+                        let body = `{"tag":` + app.tag_json(id, tname) + `}`
                         return app.cors(h, h.respond_json(body))
                     }
                     err(e) => { return app.cors(h, h.respond_400()) }

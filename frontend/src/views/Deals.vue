@@ -21,7 +21,8 @@
               <span class="px-2 py-1 rounded-full text-xs bg-slate-100 text-slate-700">{{ d.stage }}</span>
             </td>
             <td class="py-3 px-2 text-slate-600">${{ Number(d.amount).toLocaleString() }}</td>
-            <td class="py-3 px-2 text-right">
+            <td class="py-3 px-2 text-right space-x-2">
+              <button @click="openEdit(d)" class="text-brand-600 hover:text-brand-700 text-xs">Edit</button>
               <button @click="remove(d.id)" class="text-red-600 hover:text-red-700 text-xs">Delete</button>
             </td>
           </tr>
@@ -32,7 +33,7 @@
       </table>
     </div>
 
-    <Modal :open="modalOpen" title="New deal" @close="modalOpen = false">
+    <Modal :open="modalOpen" :title="editingId ? 'Edit deal' : 'New deal'" @close="modalOpen = false">
       <form @submit.prevent="create" class="space-y-3">
         <input v-model="form.title" placeholder="Title" class="input" />
         <select v-model="form.stage" class="input">
@@ -53,10 +54,13 @@
 import { ref, onMounted } from 'vue'
 import api from '../api'
 import Modal from '../components/Modal.vue'
+import { useToastStore } from '../stores/toast'
 
+const toast = useToastStore()
 const deals = ref([])
 const modalOpen = ref(false)
 const saving = ref(false)
+const editingId = ref(null)
 const form = ref({ title: '', stage: 'lead', amount: 0 })
 
 async function load() {
@@ -66,14 +70,27 @@ async function load() {
 onMounted(load)
 
 function openCreate() {
+  editingId.value = null
   form.value = { title: '', stage: 'lead', amount: 0 }
+  modalOpen.value = true
+}
+
+function openEdit(d) {
+  editingId.value = d.id
+  form.value = { title: d.title || '', stage: d.stage || 'lead', amount: d.amount || 0 }
   modalOpen.value = true
 }
 
 async function create() {
   saving.value = true
   try {
-    await api.post('/deals', form.value)
+    if (editingId.value) {
+      await api.put(`/deals/${editingId.value}`, form.value)
+      toast.success('Deal updated')
+    } else {
+      await api.post('/deals', form.value)
+      toast.success('Deal created')
+    }
     modalOpen.value = false
     await load()
   } finally {
@@ -84,6 +101,7 @@ async function create() {
 async function remove(id) {
   if (!confirm('Delete this deal?')) return
   await api.delete(`/deals/${id}`)
+  toast.success('Deal deleted')
   await load()
 }
 </script>

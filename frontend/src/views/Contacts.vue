@@ -21,7 +21,8 @@
             <td class="py-3 px-2 text-slate-600">{{ c.email }}</td>
             <td class="py-3 px-2 text-slate-600">{{ c.phone }}</td>
             <td class="py-3 px-2 text-slate-600">{{ c.notes }}</td>
-            <td class="py-3 px-2 text-right">
+            <td class="py-3 px-2 text-right space-x-2">
+              <button @click="openEdit(c)" class="text-brand-600 hover:text-brand-700 text-xs">Edit</button>
               <button @click="remove(c.id)" class="text-red-600 hover:text-red-700 text-xs">Delete</button>
             </td>
           </tr>
@@ -32,7 +33,7 @@
       </table>
     </div>
 
-    <Modal :open="modalOpen" title="New contact" @close="modalOpen = false">
+    <Modal :open="modalOpen" :title="editingId ? 'Edit contact' : 'New contact'" @close="modalOpen = false">
       <form @submit.prevent="create" class="space-y-3">
         <input v-model="form.name" placeholder="Name" class="input" />
         <input v-model="form.email" placeholder="Email" class="input" />
@@ -55,6 +56,7 @@ const toast = useToastStore()
 const contacts = ref([])
 const modalOpen = ref(false)
 const saving = ref(false)
+const editingId = ref(null)
 const form = ref({ name: '', email: '', phone: '', notes: '' })
 
 async function load() {
@@ -64,16 +66,28 @@ async function load() {
 onMounted(load)
 
 function openCreate() {
+  editingId.value = null
   form.value = { name: '', email: '', phone: '', notes: '' }
+  modalOpen.value = true
+}
+
+function openEdit(c) {
+  editingId.value = c.id
+  form.value = { name: c.name || '', email: c.email || '', phone: c.phone || '', notes: c.notes || '' }
   modalOpen.value = true
 }
 
 async function create() {
   saving.value = true
   try {
-    await api.post('/contacts', form.value)
+    if (editingId.value) {
+      await api.put(`/contacts/${editingId.value}`, form.value)
+      toast.success('Contact updated')
+    } else {
+      await api.post('/contacts', form.value)
+      toast.success('Contact created')
+    }
     modalOpen.value = false
-    toast.success('Contact created')
     await load()
   } finally {
     saving.value = false

@@ -8,13 +8,16 @@
       <ul class="space-y-2">
         <li v-for="t in tags" :key="t.id" class="flex items-center justify-between border-b border-slate-100 py-2">
           <span class="text-slate-800">{{ t.name }}</span>
-          <button @click="remove(t.id)" class="text-red-600 text-xs">Delete</button>
+          <div class="space-x-2">
+            <button @click="openEdit(t)" class="text-brand-600 text-xs">Edit</button>
+            <button @click="remove(t.id)" class="text-red-600 text-xs">Delete</button>
+          </div>
         </li>
         <li v-if="!tags.length" class="text-slate-400 text-center py-6">No tags yet</li>
       </ul>
     </div>
 
-    <Modal :open="modalOpen" title="New tag" @close="modalOpen = false">
+    <Modal :open="modalOpen" :title="editingId ? 'Edit tag' : 'New tag'" @close="modalOpen = false">
       <form @submit.prevent="create" class="space-y-3">
         <input v-model="form.name" placeholder="Name" class="input" />
         <button class="btn-primary w-full" :disabled="saving">{{ saving ? 'Saving...' : 'Save' }}</button>
@@ -34,6 +37,7 @@ const toast = useToastStore()
 const tags = ref([])
 const modalOpen = ref(false)
 const saving = ref(false)
+const editingId = ref(null)
 const form = ref({ name: '' })
 
 async function load() {
@@ -43,16 +47,28 @@ async function load() {
 onMounted(load)
 
 function openCreate() {
+  editingId.value = null
   form.value = { name: '' }
+  modalOpen.value = true
+}
+
+function openEdit(t) {
+  editingId.value = t.id
+  form.value = { name: t.name || '' }
   modalOpen.value = true
 }
 
 async function create() {
   saving.value = true
   try {
-    await api.post('/tags', form.value)
+    if (editingId.value) {
+      await api.put(`/tags/${editingId.value}`, form.value)
+      toast.success('Tag updated')
+    } else {
+      await api.post('/tags', form.value)
+      toast.success('Tag created')
+    }
     modalOpen.value = false
-    toast.success('Tag created')
     await load()
   } finally {
     saving.value = false

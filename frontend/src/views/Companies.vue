@@ -19,7 +19,8 @@
             <td class="py-3 px-2 font-medium text-slate-800">{{ c.name }}</td>
             <td class="py-3 px-2 text-slate-600">{{ c.industry }}</td>
             <td class="py-3 px-2 text-slate-600">{{ c.website }}</td>
-            <td class="py-3 px-2 text-right">
+            <td class="py-3 px-2 text-right space-x-2">
+              <button @click="openEdit(c)" class="text-brand-600 hover:text-brand-700 text-xs">Edit</button>
               <button @click="remove(c.id)" class="text-red-600 hover:text-red-700 text-xs">Delete</button>
             </td>
           </tr>
@@ -30,7 +31,7 @@
       </table>
     </div>
 
-    <Modal :open="modalOpen" title="New company" @close="modalOpen = false">
+    <Modal :open="modalOpen" :title="editingId ? 'Edit company' : 'New company'" @close="modalOpen = false">
       <form @submit.prevent="create" class="space-y-3">
         <input v-model="form.name" placeholder="Name" class="input" />
         <input v-model="form.industry" placeholder="Industry" class="input" />
@@ -46,10 +47,13 @@
 import { ref, onMounted } from 'vue'
 import api from '../api'
 import Modal from '../components/Modal.vue'
+import { useToastStore } from '../stores/toast'
 
+const toast = useToastStore()
 const companies = ref([])
 const modalOpen = ref(false)
 const saving = ref(false)
+const editingId = ref(null)
 const form = ref({ name: '', industry: '', website: '', notes: '' })
 
 async function load() {
@@ -59,14 +63,27 @@ async function load() {
 onMounted(load)
 
 function openCreate() {
+  editingId.value = null
   form.value = { name: '', industry: '', website: '', notes: '' }
+  modalOpen.value = true
+}
+
+function openEdit(c) {
+  editingId.value = c.id
+  form.value = { name: c.name || '', industry: c.industry || '', website: c.website || '', notes: c.notes || '' }
   modalOpen.value = true
 }
 
 async function create() {
   saving.value = true
   try {
-    await api.post('/companies', form.value)
+    if (editingId.value) {
+      await api.put(`/companies/${editingId.value}`, form.value)
+      toast.success('Company updated')
+    } else {
+      await api.post('/companies', form.value)
+      toast.success('Company created')
+    }
     modalOpen.value = false
     await load()
   } finally {
@@ -77,6 +94,7 @@ async function create() {
 async function remove(id) {
   if (!confirm('Delete this company?')) return
   await api.delete(`/companies/${id}`)
+  toast.success('Company deleted')
   await load()
 }
 </script>
