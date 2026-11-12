@@ -61,7 +61,16 @@ The frontend expects the backend at `http://127.0.0.1:8080` (override with `VITE
 - Tags: `/tags`, `/tags/{id}`, `/entity-tags`, `GET /entity-tags/{type}/{id}`
 - Attachments: `/attachments`, `/attachments/{id}`
 - Audit: `GET /audit`
+- Workflows: `GET /workflows`, `POST /deals/{id}/transition`
 - Export: `GET /export/contacts`
 - `GET /stats`, `GET /health`
 
 All protected routes require `Authorization: Bearer <token>`.
+
+## Aegis showcase features
+
+- Deal lifecycle state machine: `lead -> qualified -> proposal -> won/lost`
+- Invalid deal transitions are rejected by the backend
+- Deal creation and stage changes trigger mock email and webhook deliveries
+- Mock delivery runs are persisted and visible at `/workflows`
+- The frontend exposes a one-click deal transition control and workflow ledger

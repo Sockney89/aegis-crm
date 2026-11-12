@@ -1,0 +1,97 @@
+state DealLifecycle { Lead, Qualified, Proposal, Won, Lost }
+
+struct DealProcess { id: Str }
+
+impl DealProcess @ DealLifecycle::Lead {
+    fn qualify(mut self) -> Empty {
+        self.transition(DealLifecycle::Qualified)
+        return
+    }
+}
+
+impl DealProcess @ DealLifecycle::Qualified {
+    fn propose(mut self) -> Empty {
+        self.transition(DealLifecycle::Proposal)
+        return
+    }
+}
+
+impl DealProcess @ DealLifecycle::Proposal {
+    fn win(mut self) -> Empty {
+        self.transition(DealLifecycle::Won)
+        return
+    }
+
+    fn lose(mut self) -> Empty {
+        self.transition(DealLifecycle::Lost)
+        return
+    }
+}
+
+impl DealProcess @ DealLifecycle::Lead {
+    fn lose(mut self) -> Empty {
+        self.transition(DealLifecycle::Lost)
+        return
+    }
+}
+
+impl DealProcess @ DealLifecycle::Qualified {
+    fn lose(mut self) -> Empty {
+        self.transition(DealLifecycle::Lost)
+        return
+    }
+}
+
+struct MockServices { }
+
+impl MockServices {
+    fn stage_name(self, stage: Str) -> Str {
+        return stage
+    }
+
+    fn is_stage(self, stage: Str) -> Bool {
+        return stage == "lead" || stage == "qualified" || stage == "proposal" || stage == "won" || stage == "lost"
+    }
+
+    fn can_transition(self, from: Str, to: Str) -> Bool {
+        if !self.is_stage(from) || !self.is_stage(to) || from == to {
+            return false
+        }
+        if from == "lead" && (to == "qualified" || to == "lost") {
+            return true
+        }
+        if from == "qualified" && (to == "proposal" || to == "lost") {
+            return true
+        }
+        if from == "proposal" && (to == "won" || to == "lost") {
+            return true
+        }
+        return false
+    }
+
+    fn email(self, recipient: Str, subject: Str, body: Str) -> Str {
+        let delivery_id = "mock_email_" + str(now_ms()) + "_" + str(rand_int(1000, 9999))
+        println("[mock-email] " + delivery_id + " to=" + recipient + " subject=" + subject)
+        return delivery_id
+    }
+
+    fn webhook(self, event_name: Str, payload: Str) -> Str {
+        let delivery_id = "mock_webhook_" + str(now_ms()) + "_" + str(rand_int(1000, 9999))
+        println("[mock-webhook] " + delivery_id + " event=" + event_name + " payload=" + payload)
+        return delivery_id
+    }
+
+    fn stage_changed(self, owner: Str, deal_id: Str, from: Str, to: Str) -> Str {
+        let subject = "Deal " + deal_id + " moved to " + to
+        let body = "Deal stage changed from " + from + " to " + to
+        let email_id = self.email(owner, subject, body)
+        let webhook_id = self.webhook("deal.stage_changed", `{"deal_id":"` + deal_id + `","from":"` + from + `","to":"` + to + `"}`)
+        return email_id + "|" + webhook_id
+    }
+
+    fn deal_created(self, owner: Str, deal_id: Str, stage: Str) -> Str {
+        let email_id = self.email(owner, "New deal created", "Deal " + deal_id + " was created in " + stage)
+        let webhook_id = self.webhook("deal.created", `{"deal_id":"` + deal_id + `","stage":"` + stage + `"}`)
+        return email_id + "|" + webhook_id
+    }
+}

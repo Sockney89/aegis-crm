@@ -22,6 +22,7 @@
             </td>
             <td class="py-3 px-2 text-slate-600">${{ Number(d.amount).toLocaleString() }}</td>
             <td class="py-3 px-2 text-right space-x-2">
+              <button v-if="nextStage(d.stage)" @click="advance(d)" class="text-emerald-600 hover:text-emerald-700 text-xs">Move to {{ nextStage(d.stage) }}</button>
               <button @click="openEdit(d)" class="text-brand-600 hover:text-brand-700 text-xs">Edit</button>
               <button @click="remove(d.id)" class="text-red-600 hover:text-red-700 text-xs">Delete</button>
             </td>
@@ -102,6 +103,19 @@ async function remove(id) {
   if (!confirm('Delete this deal?')) return
   await api.delete(`/deals/${id}`)
   toast.success('Deal deleted')
+  await load()
+}
+
+function nextStage(stage) {
+  const next = { lead: 'qualified', qualified: 'proposal', proposal: 'won' }
+  return next[stage] || ''
+}
+
+async function advance(deal) {
+  const next = nextStage(deal.stage)
+  if (!next) return
+  await api.post(`/deals/${deal.id}/transition`, { stage: next })
+  toast.success(`Deal moved to ${next}; mock email and webhook delivered`)
   await load()
 }
 </script>

@@ -16,6 +16,7 @@
         <router-link to="/tasks" class="nav-link" active-class="nav-active">Tasks</router-link>
         <router-link to="/tags" class="nav-link" active-class="nav-active">Tags</router-link>
         <router-link to="/audit" class="nav-link" active-class="nav-active">Audit</router-link>
+        <router-link to="/workflows" class="nav-link" active-class="nav-active">Workflows</router-link>
       </nav>
       <div class="p-4 border-t border-slate-200">
         <div class="text-sm text-slate-600 mb-2">{{ auth.user?.name || auth.user?.email }}</div>
@@ -44,7 +45,7 @@ const router = useRouter()
 const route = useRoute()
 
 const title = computed(() => {
-  const map = { '/': 'Dashboard', '/contacts': 'Contacts', '/companies': 'Companies', '/deals': 'Deals', '/tasks': 'Tasks', '/tags': 'Tags', '/audit': 'Audit log' }
+  const map = { '/': 'Dashboard', '/contacts': 'Contacts', '/companies': 'Companies', '/deals': 'Deals', '/tasks': 'Tasks', '/tags': 'Tags', '/audit': 'Audit log', '/workflows': 'Mock workflows' }
   return map[route.path] || 'CRM'
 })
 

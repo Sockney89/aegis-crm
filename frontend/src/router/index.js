@@ -18,6 +18,7 @@ const routes = [
       { path: 'tasks', component: () => import('../views/Tasks.vue') },
       { path: 'tags', component: () => import('../views/Tags.vue') },
       { path: 'audit', component: () => import('../views/Audit.vue') },
+      { path: 'workflows', component: () => import('../views/Workflows.vue') },
     ],
   },
 ]

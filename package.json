@@ -5,7 +5,7 @@
   "scripts": {
     "dev:frontend": "npm --workspace frontend run dev",
     "build:frontend": "npm --workspace frontend run build",
-    "build:backend": "aegis backend/src/app.aegis backend/src/infra.aegis backend/src/db.aegis backend/src/crm.aegis backend/src/main.aegis backend/src/sqlite_helper.c backend/vendor/sqlite3.c --main App::main --emit-exe backend/build/crm.exe",
+"build:backend": "aegis backend/src/app.aegis backend/src/infra.aegis backend/src/db.aegis backend/src/crm.aegis backend/src/workflow.aegis backend/src/main.aegis backend/src/sqlite_helper.c backend/vendor/sqlite3.c --main App::main --emit-exe backend/build/crm.exe",
     "dev:backend": "backend/build/crm.exe"
   }
 }

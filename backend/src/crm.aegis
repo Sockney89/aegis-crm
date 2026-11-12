@@ -47,4 +47,9 @@ impl App {
         let h = Http {}
         return `{"id":"` + h.json_escape(id) + `","action":"` + h.json_escape(action) + `","entity_type":"` + h.json_escape(entity_type) + `","entity_id":"` + h.json_escape(entity_id) + `","details":"` + h.json_escape(details) + `","created_at":` + str(created_at) + `}`
     }
+
+    fn workflow_json(self, id: Str, trigger: Str, entity_id: Str, service: Str, status: Str, payload: Str, created_at: Int) -> Str {
+        let h = Http {}
+        return `{"id":"` + h.json_escape(id) + `","trigger":"` + h.json_escape(trigger) + `","entity_id":"` + h.json_escape(entity_id) + `","service":"` + h.json_escape(service) + `","status":"` + h.json_escape(status) + `","payload":"` + h.json_escape(payload) + `","created_at":` + str(created_at) + `}`
+    }
 }

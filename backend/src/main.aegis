@@ -18,6 +18,7 @@ self.exec(db, "CREATE TABLE IF NOT EXISTS tags (id TEXT PRIMARY KEY, owner TEXT,
 self.exec(db, "CREATE TABLE IF NOT EXISTS entity_tags (entity_type TEXT, entity_id TEXT, tag_id TEXT)")
 self.exec(db, "CREATE TABLE IF NOT EXISTS audit_log (id TEXT PRIMARY KEY, owner TEXT, action TEXT, entity_type TEXT, entity_id TEXT, details TEXT, created_at INTEGER)")
 self.exec(db, "CREATE TABLE IF NOT EXISTS attachments (id TEXT PRIMARY KEY, owner TEXT, entity_type TEXT, entity_id TEXT, filename TEXT, url TEXT, created_at INTEGER)")
+self.exec(db, "CREATE TABLE IF NOT EXISTS workflow_runs (id TEXT PRIMARY KEY, owner TEXT, trigger TEXT, entity_id TEXT, service TEXT, status TEXT, payload TEXT, created_at INTEGER)")
 
 let mut rate_counts: Map[Str, Int] = {}
 let mut metrics_map: Map[Str, Int] = {}
@@ -436,6 +437,13 @@ let mut metrics_map: Map[Str, Int] = {}
                         app.exec(db, "INSERT INTO deals (id,owner,contact_id,company_id,title,amount,stage,created_at) VALUES ('" + app.sql_escape(id) + "','" + app.sql_escape(cur_email) + "','" + app.sql_escape(contact_id) + "','" + app.sql_escape(company_id) + "','" + app.sql_escape(title) + "'," + str(amount) + ",'" + app.sql_escape(stage) + "'," + str(created_at) + ")")
                         app.exec(db, "INSERT INTO deal_stages (id,deal_id,stage,changed_at) VALUES ('" + app.sql_escape(app.new_id("ds")) + "','" + app.sql_escape(id) + "','" + app.sql_escape(stage) + "'," + str(created_at) + ")")
                         app.exec(db, "INSERT INTO audit_log (id,owner,action,entity_type,entity_id,details,created_at) VALUES ('" + app.sql_escape(app.new_id("au")) + "','" + app.sql_escape(cur_email) + "','create','deal','" + app.sql_escape(id) + "','', " + str(created_at) + ")")
+                        let mock = MockServices {}
+                        let deliveries = mock.deal_created(cur_email, id, stage)
+                        let delivery_sep = deliveries.index_of("|")
+                        let email_delivery = deliveries.substring(0, delivery_sep)
+                        let webhook_delivery = deliveries.substring(delivery_sep + 1, deliveries.length())
+                        app.exec(db, "INSERT INTO workflow_runs (id,owner,trigger,entity_id,service,status,payload,created_at) VALUES ('" + app.sql_escape(app.new_id("wf")) + "','" + app.sql_escape(cur_email) + "','deal.created','" + app.sql_escape(id) + "','mock_email','delivered','" + app.sql_escape(email_delivery) + "'," + str(created_at) + ")")
+                        app.exec(db, "INSERT INTO workflow_runs (id,owner,trigger,entity_id,service,status,payload,created_at) VALUES ('" + app.sql_escape(app.new_id("wf")) + "','" + app.sql_escape(cur_email) + "','deal.created','" + app.sql_escape(id) + "','mock_webhook','delivered','" + app.sql_escape(webhook_delivery) + "'," + str(created_at) + ")")
                         let body = `{"deal":` + app.deal_json(id, title, contact_id, company_id, amount, stage, created_at) + `}`
                         return app.cors(h, h.respond_json(body))
                     }
@@ -443,7 +451,48 @@ let mut metrics_map: Map[Str, Int] = {}
                 }
             }
 
-// --- deal update ---
+            // --- deal transition ---
+            if req.path.index_of("/deals/") == 0 && req.path.index_of("/transition") > 0 && req.method == "POST" {
+                let transition_end = req.path.index_of("/transition")
+                let id = req.path.substring(7, transition_end)
+                let fstmt = crm_prepare(db, "SELECT title,contact_id,company_id,amount,stage,created_at FROM deals WHERE id='" + app.sql_escape(id) + "' AND owner='" + app.sql_escape(cur_email) + "'")
+                if crm_step(fstmt) != 100 {
+                    crm_finalize(fstmt)
+                    return app.cors(h, h.respond_404())
+                }
+                let dtitle = crm_column_text(fstmt, 0)
+                let dcontact = crm_column_text(fstmt, 1)
+                let dcompany = crm_column_text(fstmt, 2)
+                let damount = crm_column_double(fstmt, 3)
+                let from_stage = crm_column_text(fstmt, 4)
+                let dcreated = crm_column_int(fstmt, 5)
+                crm_finalize(fstmt)
+                match jp.parse(req.body) {
+                    ok(obj) => {
+                        let to_stage = app.field_str(jp, obj, "stage")
+                        let mock = MockServices {}
+                        if !mock.can_transition(from_stage, to_stage) {
+                            return app.cors(h, h.respond_json(`{"error":"invalid deal transition"}`))
+                        }
+                        let changed_at = now_ms()
+                        app.exec(db, "UPDATE deals SET stage='" + app.sql_escape(to_stage) + "' WHERE id='" + app.sql_escape(id) + "' AND owner='" + app.sql_escape(cur_email) + "'")
+                        app.exec(db, "INSERT INTO deal_stages (id,deal_id,stage,changed_at) VALUES ('" + app.sql_escape(app.new_id("ds")) + "','" + app.sql_escape(id) + "','" + app.sql_escape(to_stage) + "'," + str(changed_at) + ")")
+                        let deliveries = mock.stage_changed(cur_email, id, from_stage, to_stage)
+                        let delivery_sep = deliveries.index_of("|")
+                        let email_delivery = deliveries.substring(0, delivery_sep)
+                        let webhook_delivery = deliveries.substring(delivery_sep + 1, deliveries.length())
+                        let payload = "from=" + from_stage + ";to=" + to_stage
+                        app.exec(db, "INSERT INTO workflow_runs (id,owner,trigger,entity_id,service,status,payload,created_at) VALUES ('" + app.sql_escape(app.new_id("wf")) + "','" + app.sql_escape(cur_email) + "','deal.stage_changed','" + app.sql_escape(id) + "','mock_email','delivered','" + app.sql_escape(email_delivery) + "'," + str(changed_at) + ")")
+                        app.exec(db, "INSERT INTO workflow_runs (id,owner,trigger,entity_id,service,status,payload,created_at) VALUES ('" + app.sql_escape(app.new_id("wf")) + "','" + app.sql_escape(cur_email) + "','deal.stage_changed','" + app.sql_escape(id) + "','mock_webhook','delivered','" + app.sql_escape(webhook_delivery) + "'," + str(changed_at) + ")")
+                        app.exec(db, "INSERT INTO activities (id,owner,entity_type,entity_id,kind,body,created_at) VALUES ('" + app.sql_escape(app.new_id("a")) + "','" + app.sql_escape(cur_email) + "','deal','" + app.sql_escape(id) + "','stage-change','" + app.sql_escape(payload) + "'," + str(changed_at) + ")")
+                        let body = `{"deal":` + app.deal_json(id, dtitle, dcontact, dcompany, damount, to_stage, dcreated) + `,"workflow":"` + h.json_escape(deliveries) + `"}`
+                        return app.cors(h, h.respond_json(body))
+                    }
+                    err(e) => { return app.cors(h, h.respond_400()) }
+                }
+            }
+
+            // --- deal update ---
             if req.path.index_of("/deals/") == 0 && req.method == "PUT" {
                 let id = req.path.substring(7, req.path.length())
                 let fstmt = crm_prepare(db, "SELECT title,contact_id,company_id,amount,stage FROM deals WHERE id='" + app.sql_escape(id) + "' AND owner='" + app.sql_escape(cur_email) + "'")
@@ -469,8 +518,21 @@ let mut metrics_map: Map[Str, Int] = {}
                         if a != 0.0 { damount = a }
                         let st = app.field_str(jp, obj, "stage")
                         if st != "" && st != dstage {
+                            let mock = MockServices {}
+                            if !mock.can_transition(dstage, st) {
+                                return app.cors(h, h.respond_json(`{"error":"invalid deal transition"}`))
+                            }
+                            let from_stage = dstage
                             dstage = st
-                            app.exec(db, "INSERT INTO deal_stages (id,deal_id,stage,changed_at) VALUES ('" + app.sql_escape(app.new_id("ds")) + "','" + app.sql_escape(id) + "','" + app.sql_escape(dstage) + "'," + str(now_ms()) + ")")
+                            let changed_at = now_ms()
+                            app.exec(db, "INSERT INTO deal_stages (id,deal_id,stage,changed_at) VALUES ('" + app.sql_escape(app.new_id("ds")) + "','" + app.sql_escape(id) + "','" + app.sql_escape(dstage) + "'," + str(changed_at) + ")")
+                            let deliveries = mock.stage_changed(cur_email, id, from_stage, dstage)
+                            let delivery_sep = deliveries.index_of("|")
+                            let email_delivery = deliveries.substring(0, delivery_sep)
+                            let webhook_delivery = deliveries.substring(delivery_sep + 1, deliveries.length())
+                            app.exec(db, "INSERT INTO workflow_runs (id,owner,trigger,entity_id,service,status,payload,created_at) VALUES ('" + app.sql_escape(app.new_id("wf")) + "','" + app.sql_escape(cur_email) + "','deal.stage_changed','" + app.sql_escape(id) + "','mock_email','delivered','" + app.sql_escape(email_delivery) + "'," + str(changed_at) + ")")
+                            app.exec(db, "INSERT INTO workflow_runs (id,owner,trigger,entity_id,service,status,payload,created_at) VALUES ('" + app.sql_escape(app.new_id("wf")) + "','" + app.sql_escape(cur_email) + "','deal.stage_changed','" + app.sql_escape(id) + "','mock_webhook','delivered','" + app.sql_escape(webhook_delivery) + "'," + str(changed_at) + ")")
+                            app.exec(db, "INSERT INTO activities (id,owner,entity_type,entity_id,kind,body,created_at) VALUES ('" + app.sql_escape(app.new_id("a")) + "','" + app.sql_escape(cur_email) + "','deal','" + app.sql_escape(id) + "','stage-change','from=" + app.sql_escape(from_stage) + ";to=" + app.sql_escape(dstage) + "'," + str(changed_at) + ")")
                         }
                         app.exec(db, "UPDATE deals SET title='" + app.sql_escape(dtitle) + "', contact_id='" + app.sql_escape(dcontact) + "', company_id='" + app.sql_escape(dcompany) + "', amount=" + str(damount) + ", stage='" + app.sql_escape(dstage) + "' WHERE id='" + app.sql_escape(id) + "' AND owner='" + app.sql_escape(cur_email) + "'")
                         let created_at = now_ms()
@@ -819,6 +881,28 @@ let mut metrics_map: Map[Str, Int] = {}
                     let ac = crm_column_int(stmt, 5)
                     if !first { arr = arr + "," }
                     arr = arr + app.audit_json(aid, aaction, aet, aeid, adet, ac)
+                    first = false
+                }
+                crm_finalize(stmt)
+                arr = arr + "]"
+                return app.cors(h, h.respond_json(arr))
+            }
+
+            // --- mock workflow runs ---
+            if req.path == "/workflows" && req.method == "GET" {
+                let stmt = crm_prepare(db, "SELECT id,trigger,entity_id,service,status,payload,created_at FROM workflow_runs WHERE owner='" + app.sql_escape(cur_email) + "' ORDER BY created_at DESC")
+                let mut arr = "["
+                let mut first = true
+                while crm_step(stmt) == 100 {
+                    let wid = crm_column_text(stmt, 0)
+                    let wtrigger = crm_column_text(stmt, 1)
+                    let weid = crm_column_text(stmt, 2)
+                    let wservice = crm_column_text(stmt, 3)
+                    let wstatus = crm_column_text(stmt, 4)
+                    let wpayload = crm_column_text(stmt, 5)
+                    let wc = crm_column_int(stmt, 6)
+                    if !first { arr = arr + "," }
+                    arr = arr + app.workflow_json(wid, wtrigger, weid, wservice, wstatus, wpayload, wc)
                     first = false
                 }
                 crm_finalize(stmt)
